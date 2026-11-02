@@ -592,6 +592,7 @@ class MainActivity : Activity() {
             videoWallpaper.pause()
             findViewById<ImageView>(R.id.wallpaper).alpha = 1f
             ui.removeCallbacks(refreshIfDirty)
+            ui.removeCallbacks(homeServiceCheck)
             ui.removeCallbacks(weatherTick)
             ui.removeCallbacks(batteryTick)
             ui.removeCallbacks(themeTick)
@@ -648,25 +649,28 @@ class MainActivity : Activity() {
         HomeAlarm.release(this) // the service died without telling us: its alarm setting must not stay
         if (prefs.getBoolean("home_off", false) || checkSelfPermission(WRITE_SECURE) != PackageManager.PERMISSION_GRANTED) return
         val me = ComponentName(this, HomeOverride::class.java).flattenToString()
-        val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
-        Settings.Secure.putString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, if (on.isEmpty()) me else "$on:$me")
+        val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            .takeUnless { it == "null" }.orEmpty()
+        if (!HomeSetup.listed(on, packageName)) {
+            Settings.Secure.putString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, if (on.isEmpty()) me else "$on:$me")
+        }
         Settings.Secure.putInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
     }
 
-    /** Compared as components: Settings may store us in short form (dev.plume/.HomeOverride). */
-    private fun homeServiceOn(): Boolean {
-        val me = ComponentName(this, HomeOverride::class.java)
-        return Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
-            .split(':').any { ComponentName.unflattenFromString(it) == me }
-    }
+    /** Listed does not mean bound: restricted settings can prevent Android from starting the service. */
+    private fun homeServiceOn() = HomeOverride.running != null
+
+    private fun homeServiceListed() = HomeSetup.listed(
+        Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), packageName)
 
     private fun toggleHomeButton() = if (homeServiceOn()) turnOffHomeButton() else turnOnHomeButton()
 
     /** Off hands Home back to the TV's own launcher, and Plume leaves it off until switched on again. */
     private fun turnOffHomeButton() {
+        ui.removeCallbacks(homeServiceCheck)
         prefs.edit().putBoolean("home_off", true).apply()
         HomeOverride.running?.disableSelf()
-        if (homeServiceOn() && checkSelfPermission(WRITE_SECURE) == PackageManager.PERMISSION_GRANTED) {
+        if (homeServiceListed() && checkSelfPermission(WRITE_SECURE) == PackageManager.PERMISSION_GRANTED) {
             val me = ComponentName(this, HomeOverride::class.java)
             val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
             Settings.Secure.putString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
@@ -674,7 +678,7 @@ class MainActivity : Activity() {
         }
         // disableSelf takes a moment: only send the user to Accessibility if the service is still on after it.
         ui.postDelayed({
-            if (homeServiceOn()) {
+            if (homeServiceOn() || homeServiceListed()) {
                 toast(getString(R.string.home_off_hint), long = true, system = true)
                 returnTo(R.string.home_button)
                 openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -687,9 +691,14 @@ class MainActivity : Activity() {
     private fun turnOnHomeButton() {
         prefs.edit().remove("home_off").apply()
         ensureHomeService() // works where the adb permission was granted
-        if (homeServiceOn()) {
+        if (homeServiceOn() || homeServiceListed()) {
             // A switch-off just before (disableSelf) can land after this write: check again, and write again if it did.
-            ui.postDelayed({ ensureHomeService(); if (settingsScrim.visibility == View.VISIBLE && lastSettings == R.string.section_remote_home) renderSettings(R.string.home_button) }, 800)
+            ui.postDelayed({
+                if (!isDestroyed && resumed && !prefs.getBoolean("home_off", false)) {
+                    ensureHomeService()
+                    checkHomeService()
+                }
+            }, 800)
             return renderSettings(R.string.home_button)
         }
         // The written path is the safety net: some Google TVs (a Xiaomi stick) answer the Accessibility link
@@ -800,14 +809,26 @@ class MainActivity : Activity() {
     private fun tryHomeService() {
         prefs.edit().remove("home_off").apply()
         ensureHomeService() // works where the adb permission was granted
-        if (homeServiceOn()) testPopup(2) else servicePopup()
+        if (homeServiceOn()) testPopup(2) else if (homeServiceListed()) checkHomeService() else servicePopup()
+    }
+
+    private val homeServiceCheck = Runnable {
+        if (!isDestroyed && resumed && !prefs.getBoolean("home_off", false)) {
+            if (homeServiceOn()) testPopup(2) else serviceStillOff()
+        }
+    }
+
+    /** Give Android time to bind the service, or to reject a restricted sideloaded installation. */
+    private fun checkHomeService() {
+        ui.removeCallbacks(homeServiceCheck)
+        ui.postDelayed(homeServiceCheck, 2_000L)
     }
 
     /** Back from the role dialog, Accessibility settings, or another home screen after a Home press. */
     private fun homeSetupResumed() {
         if (setupStep == 2) {
             setupStep = 0
-            if (homeServiceOn()) testPopup(2) else serviceStillOff()
+            if (homeServiceOn()) testPopup(2) else if (homeServiceListed()) checkHomeService() else serviceStillOff()
         } else if (setupStep == 3) {
             setupStep = 0
             servicePopup()
@@ -871,7 +892,7 @@ class MainActivity : Activity() {
                 cornerRadius = dp(10).toFloat()
                 setColor(if (dark) DARK_BG else 0xFFE9EBEF.toInt())
             }
-            listOfNotNull(lanAddress()?.let { "adb connect $it:5555" }, "adb shell pm grant $packageName $WRITE_SECURE").forEach {
+            (listOfNotNull(lanAddress()?.let { "adb connect $it:5555" }) + HomeSetup.commands(packageName, sdk())).forEach {
                 addView(label(it, 12f).apply { typeface = mono; maxLines = 2; ellipsize = null; setPadding(0, dp(2), 0, dp(2)) })
             }
         }
@@ -974,6 +995,7 @@ class MainActivity : Activity() {
         }
         dialog.setOnDismissListener {
             if (setupDialog !== dialog) return@setOnDismissListener
+            ui.removeCallbacks(homeServiceCheck)
             setupDialog = null // closed with Back or a button: setup stops here, and Settings can start it again
             setupStep = 0
             homeTest = 0

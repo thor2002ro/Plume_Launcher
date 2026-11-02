@@ -104,9 +104,10 @@ Android 13+ greys out the Accessibility switch for sideloaded apps, and most Goo
    ```sh
    adb connect <tv-address>:5555
    adb shell pm grant dev.plume android.permission.WRITE_SECURE_SETTINGS
+   adb shell appops set dev.plume ACCESS_RESTRICTED_SETTINGS allow
    ```
 
-4. Accept the prompt on the TV, then choose **Try again** in Plume. Plume turns the service on by itself.
+4. Accept the debugging prompt on the TV before running the two shell commands, then choose **Try again** in Plume. A successful `pm grant` normally prints nothing. The `appops` command lifts the separate restricted-settings block on Android 13 and newer; the grant alone may leave Home blocked. Plume checks that its service is running before asking you to test Home.
 
 The same grant also lets Plume set the Gallery screensaver and turn its Home service back on after a force-stop. Everything else works without it.
 </details>

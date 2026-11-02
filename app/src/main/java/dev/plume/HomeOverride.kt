@@ -57,7 +57,12 @@ class HomeOverride : AccessibilityService() {
             listening = false
             unregisterReceiver(packageReceiver)
         }
-        getSharedPreferences("home", MODE_PRIVATE).edit().putBoolean("home_off", true).apply()
+        // A disconnect while still enabled is not a request to leave Home switched off.
+        if (!HomeSetup.listed(android.provider.Settings.Secure.getString(contentResolver,
+                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), packageName) ||
+            android.provider.Settings.Secure.getInt(contentResolver, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 0) {
+            getSharedPreferences("home", MODE_PRIVATE).edit().putBoolean("home_off", true).apply()
+        }
         return super.onUnbind(intent)
     }
 
