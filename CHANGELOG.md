@@ -33,6 +33,9 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **Power menu icon.** Hold **OK** on a top-bar icon and select **Add icon**, then **Power menu**. The icon opens the Android power menu.
 - **Remote battery.** The top bar shows your Bluetooth remote's battery by default. Hold **OK** on its icon to hide it or change the alert; use **Add icon → Remote battery** to restore it.
 - **More apps.** Plume shows installed apps that do not have a TV launcher entry. Some apps need touch or a mouse.
+- Keep other launchers enabled and test native Home without accessibility redirection. Sole-launcher support remains optional.
+- Home redirection detects declared launcher activities and aliases on more TV boxes. It leaves unrelated launcher windows alone.
+
 - Plume checks native Home before offering accessibility setup, including systems where Plume is the only launcher.
 - Open another launcher from Home settings to pause Home redirection until you open another app.
 - Fire TV Home uses a short cover and cancels pending starts when you open another app or switch off the screen.

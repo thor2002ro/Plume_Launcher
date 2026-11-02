@@ -266,7 +266,7 @@ internal fun iconStyleOf(stored: String?, oldColour: Boolean) =
 class Updated : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         File(c.cacheDir, ApkProvider.NAME).delete() // the downloaded update (see installUpdate)
-        c.startActivity(Intent(c, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        c.startActivity(c.plumeHomeIntent())
         dropSessions(c)
     }
 }
@@ -638,6 +638,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        endHomeTest()
         unregisterReceiver(unlockReceiver)
         if (ready) {
             videoWallpaper.clear()
@@ -827,12 +828,12 @@ class MainActivity : Activity() {
         return true
     }
 
-    /** Home opens Plume one way or the other: the service anywhere, the role only where the TV honours it. */
+    /** A sole native launcher, a tested native route, or the bound accessibility workaround. */
     private fun homeSetUp() = homeServiceOn() || isDefaultHome()
 
     private fun startHomeSetup() {
         restrictedTried = false
-        if (isDefaultHome()) return testPopup(1)
+        if (resolvesHome()) return testPopup(1)
         // Fire OS takes the role request and ignores it; Google TV grants it and still opens its own launcher.
         if (fireTv() || googleTv()) return tryHomeService()
         val roles = if (Build.VERSION.SDK_INT >= 29) getSystemService(RoleManager::class.java) else null
@@ -840,7 +841,16 @@ class MainActivity : Activity() {
         else afterHomeRole()
     }
 
-    private fun afterHomeRole() = if (isDefaultHome() || homeServiceOn()) testPopup(1) else tryHomeService()
+    private fun afterHomeRole() = when {
+        resolvesHome() -> testPopup(1)
+        homeServiceOn() -> testPopup(2)
+        else -> tryHomeService()
+    }
+
+    private fun endHomeTest() {
+        homeTest = 0
+        HomeOverride.nativeTest = false
+    }
 
     /** Service still off after Accessibility: on Android 13+ a sideloaded app's toggle is greyed until App info allows it. */
     private fun serviceStillOff() = if (sdk() >= 33 && !restrictedTried) restrictedPopup() else adbPopup()
@@ -874,7 +884,7 @@ class MainActivity : Activity() {
             servicePopup()
         } else if (homeTest != 0 && leftDuringTest) {
             val failed = homeTest
-            homeTest = 0
+            endHomeTest()
             if (failed == 1) tryHomeService() else adbPopup()
         }
     }
@@ -891,9 +901,11 @@ class MainActivity : Activity() {
         if (previewAt < 0) {
             homeTest = way
             leftDuringTest = false
+            if (way == 1) prefs.edit().remove("native_home_verified").apply()
+            HomeOverride.nativeTest = way == 1
         }
         homePopup(way, getString(R.string.setup_test_title), getString(R.string.setup_test_body), null,
-            getString(R.string.setup_skip_check) to { homeTest = 0; if (way == 1) tryHomeService() else adbPopup() })
+            getString(R.string.setup_skip_check) to { endHomeTest(); if (way == 1) tryHomeService() else adbPopup() })
     }
 
     private fun servicePopup() = homePopup(2, getString(R.string.setup_service_title), getString(R.string.setup_service_body), null,
@@ -1015,7 +1027,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(28), dp(24), dp(28), dp(20))
             // Google TV and Fire TV skip the role step, so their count starts at the service.
-            val skip = if (fireTv() || googleTv()) 1 else 0
+            val skip = if (step > 1 && (fireTv() || googleTv())) 1 else 0
             if (step > 0) addView(label(getString(R.string.setup_step, step - skip, 3 - skip), 12f).apply { secondary(0.6f) })
             addView(label(title, 22f).apply { setTypeface(typeface, Typeface.BOLD); setPadding(0, dp(4), 0, 0) })
             body?.let { addView(label(it, 14f).apply { maxLines = 6; secondary(0.8f); setLineSpacing(0f, 1.15f); setPadding(0, dp(10), 0, 0) }) }
@@ -1038,7 +1050,7 @@ class MainActivity : Activity() {
             ui.removeCallbacks(homeServiceCheck)
             setupDialog = null // closed with Back or a button: setup stops here, and Settings can start it again
             setupStep = 0
-            homeTest = 0
+            endHomeTest()
             previewAt = -1
         }
         setupDialog = dialog
@@ -1068,8 +1080,13 @@ class MainActivity : Activity() {
         if (intent.hasCategory(Intent.CATEGORY_HOME) && !prefs.getBoolean("return_dream", false)) prefs.edit().remove("return_settings").apply()
         if (intent.action == UPDATE_STATUS) return installStatus(intent)
         if (fakeSetup(intent)) return
-        if (homeTest != 0 && intent.hasCategory(Intent.CATEGORY_HOME)) { // the Home press reached us: setup works
-            homeTest = 0
+        if (homeTest != 0 && intent.hasCategory(Intent.CATEGORY_HOME) &&
+            (homeTest != 1 || HomeSetup.nativeResult(homeTest, true, intent.getBooleanExtra(HomeOverride.REDIRECTED_HOME, false),
+                prefs.getBoolean("return_dream", false)))) {
+            val native = homeTest == 1
+            val verified = !native || verifyNativeHome()
+            endHomeTest()
+            if (!verified) return tryHomeService()
             return donePopup()
         }
         val back = returnTo // set when Plume started the app that Home leaves
@@ -2791,7 +2808,7 @@ class MainActivity : Activity() {
                 HomeOverride.running?.applyKeyFilter()
                 renderSettings(R.string.smooth_volume)
             },
-            R.string.default_launcher to Triple(getString(R.string.default_launcher), if (isDefaultHome()) "Plume" else getString(R.string.press_to_set)) { makeDefaultHome() },
+            R.string.default_launcher to Triple(getString(R.string.default_launcher), if (resolvesHome()) "Plume" else getString(R.string.press_to_set)) { makeDefaultHome() },
             R.string.updates to Triple(getString(R.string.updates), when {
                 updating -> getString(R.string.updating)
                 checking -> getString(R.string.checking)

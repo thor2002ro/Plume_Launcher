@@ -72,7 +72,7 @@ class GalleryDream : DreamService() {
             return true
         }
         if (e.action == KeyEvent.ACTION_UP) {
-            startActivity(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            startActivity(plumeHomeIntent())
             finish()
         }
         return true

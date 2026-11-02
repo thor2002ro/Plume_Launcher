@@ -19,7 +19,7 @@
 #   -h                      this help
 #
 # What the steps are:
-#   native Home    leave accessibility and grants alone when Home already resolves to Plume
+#   sole Home      leave accessibility and grants alone when Plume resolves Home and is the only candidate
 #   other TVs      give Plume WRITE_SECURE_SETTINGS, allow restricted settings on Android 13+, enable and
 #                  verify its Home service for user 0; preserve previous values for --undo
 #   Fire TV        Android 9 to 11 (Fire OS 7 and 8): a Plume with the alarm change sets the alarm timing
@@ -286,9 +286,9 @@ if [ $STOCK = 1 ]; then
   printf '%s\n' "$HOMES" | grep -q '^dev.plume/' || die "cannot verify Plume as an enabled Home candidate; stock launcher stays on"
 fi
 
-if [ $NATIVE = 1 ] && [ $STOCK = 0 ]; then
+if [ $NATIVE = 1 ] && [ $SOLE = 1 ] && [ $STOCK = 0 ]; then
   [ -z "$APK" ] || [ $DRYRUN = 1 ] || adb -s "$D" install -r "$APK" || die "APK installation failed"
-  say "Plume is the native Home resolver$([ $SOLE = 1 ] && echo ' and the only enabled Home candidate'). No accessibility service or grant is needed."
+  say "Plume resolves Home and is the only enabled Home candidate. No accessibility service or grant is needed."
   exit 0
 fi
 if [ $INSTALLED = 0 ] && [ -z "$APK" ]; then
@@ -296,6 +296,7 @@ if [ $INSTALLED = 0 ] && [ -z "$APK" ]; then
 fi
 
 say "This will:"
+[ $NATIVE = 0 ] || say "  Note: multiple launchers are enabled. The reported Home default alone does not prove the remote works. Test native Home in Plume to use it without accessibility."
 [ -n "$APK" ] && say "  - install $APK"
 [ $GRANTED = 0 ] && say "  - give Plume the $GRANT grant (lets it keep its Home button service on)"
 [ $LISTED = 0 ] && say "  - switch on Plume's Home button service in Android's Accessibility settings"

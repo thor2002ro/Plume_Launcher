@@ -65,7 +65,7 @@ object HomeAlarm {
     }
 
     fun cancel(c: Context) {
-        val intent = Intent(c, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val intent = c.plumeHomeIntent()
         val send = PendingIntent.getActivity(c, 0, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) ?: return
         c.getSystemService(AlarmManager::class.java).cancel(send)
         send.cancel()

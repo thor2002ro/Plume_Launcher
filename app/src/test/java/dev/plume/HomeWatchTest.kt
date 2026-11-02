@@ -5,6 +5,45 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class HomeWatchTest {
+    @Test fun declaredHomeActivitiesWorkAcrossAndroidTvXiaomiGoogleTvAndOtherBoxes() {
+        for ((pkg, home) in listOf(
+            "com.google.android.tvlauncher" to "com.google.android.tvlauncher.MainActivity",
+            "com.mitv.tvhome" to "com.mitv.tvhome.NewHome",
+            "com.google.android.apps.tv.launcherx" to "com.google.android.apps.tv.launcherx.home.HomeActivity",
+            "com.vendor.box.launcher" to "com.vendor.box.launcher.MainActivity",
+        )) {
+            val w = HomeWatch(false) { listOf(entry(pkg, "$pkg.HomeAlias", home)) }
+            assertEquals(pkg, 0L, w.opened(pkg, home, 1_000))
+            assertNull(pkg, w.opened(pkg, "$pkg.SettingsActivity", 2_000))
+            assertNull(pkg, w.opened(pkg, "android.widget.FrameLayout", 3_000))
+        }
+    }
+
+    @Test fun changedHomeComponentsAreReadWithoutRestartingTheWatcher() {
+        var found = listOf(entry("vendor.home", "vendor.home.OldHome"))
+        val w = HomeWatch(false) { found }
+        assertEquals(0L, w.opened("vendor.home", "vendor.home.OldHome", 1_000))
+        found = listOf(entry("vendor.home", "vendor.home.NewHome"))
+        assertNull(w.opened("vendor.home", "vendor.home.OldHome", 2_000))
+        assertEquals(0L, w.opened("vendor.home", "vendor.home.NewHome", 3_000))
+    }
+
+    @Test fun discoveryNeverRedirectsPlumeOrSystemWindows() {
+        val w = HomeWatch(false) { listOf(entry("dev.plume", "dev.plume.MainActivity"), entry("android", "Resolver")) }
+        assertNull(w.opened("dev.plume", "dev.plume.MainActivity", 1_000))
+        assertEquals(HomeWatch.KEEP, w.opened("android", "Resolver", 2_000))
+        assertNull(w.opened("com.vendor.box.launcher", "MainActivity", 3_000))
+    }
+
+    @Test fun anotherDeclaredLauncherCanStayOpenWhileInterceptionIsPaused() {
+        val pkg = "vendor.home"
+        val w = HomeWatch(false) { listOf(entry(pkg, "$pkg.Home")) }
+        w.pause()
+        assertNull(w.opened(pkg, "$pkg.Home", 1_000))
+        w.opened("com.netflix.ninja", "Player", 2_000)
+        assertEquals(0L, w.opened(pkg, "$pkg.Home", 3_000))
+    }
+
     @Test fun aHomeDrawThatCancelsAWaitingRedirectDoesNotBlockLaterHomePresses() {
         val w = watch()
         w.opened("dev.plume", "dev.plume.MainActivity", 1_000)
@@ -40,7 +79,8 @@ class HomeWatchTest {
     private val gtvHome = "$gtv.home.HomeActivity"
     private val gtvKids = "$gtv.home.VanillaModeHomeActivity"
     private val oldFire = "com.amazon.firelauncher"
-    private fun watch(fire: Boolean = true, homes: Set<String> = setOf(gtvHome, gtvKids)) = HomeWatch(fire) { homes }
+    private fun watch(fire: Boolean = true, homes: Set<String> = setOf(gtvHome, gtvKids)) =
+        HomeWatch(fire) { homes.map { entry(gtv, it) } }
 
     @Test fun amazonHomeFromAnAppJumpsAtOnce() {
         val w = watch()
@@ -118,11 +158,12 @@ class HomeWatchTest {
         ).withIndex()) assertNull(cls, w.opened(gtv, cls, 1_000L + i * 1_000))
     }
 
-    // The system gave no list: keep the rule that was there before, so Home on Google TV still works.
-    @Test fun withoutAListTheGoogleTvLauncherCountsExceptItsDashboard() {
+    @Test fun missingGoogleTvDataUsesNarrowFallbacksWithoutCatchingNotices() {
         val w = watch(fire = false, homes = emptySet())
         assertEquals(0L, w.opened(gtv, gtvHome, 1_000))
         assertNull(w.opened(gtv, "$gtv.dashboard.DashboardActivity", 3_000))
+        assertNull(w.opened(gtv, "$gtv.networkreauth.NetworkReauthActivity", 4_000))
+        assertNull(w.opened(gtv, "android.widget.FrameLayout", 5_000))
     }
 
     @Test fun aWindowWithoutAClassIsLeftAlone() {
@@ -143,16 +184,16 @@ class HomeWatchTest {
             entry(amazon, amazonHome),
             entry("dev.plume", "dev.plume.MainActivity"),
         )
-        assertEquals(setOf(gtvHome, gtvKids), googleTvHomes(found))
+        assertEquals(setOf(gtvHome, gtvKids), homeClasses(found, gtv))
     }
 
     @Test fun anAliasCountsUnderItsOwnNameAndItsRealClass() {
         val found = listOf(entry(gtv, "$gtv.HomeAlias", target = "$gtv.home.RealHome"))
-        assertEquals(setOf("$gtv.HomeAlias", "$gtv.home.RealHome"), googleTvHomes(found))
+        assertEquals(setOf("$gtv.HomeAlias", "$gtv.home.RealHome"), homeClasses(found, gtv))
     }
 
     @Test fun noGoogleTvLauncherGivesAnEmptySet() {
-        assertEquals(emptySet<String>(), googleTvHomes(listOf(entry(amazon, amazonHome))))
+        assertEquals(emptySet<String>(), homeClasses(listOf(entry(amazon, amazonHome)), gtv))
     }
 
     // A second Home window must leave the jump waiting when Home is pressed from Plume.

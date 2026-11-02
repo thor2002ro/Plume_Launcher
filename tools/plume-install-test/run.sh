@@ -104,6 +104,23 @@ new google '{"native": true, "sole": true}'
 run
 check "sole native Home needs no grant or accessibility service" '[ $RC = 0 ] && [ -z "$(st enabled)" ] && [ "$(st granted)" = False ]'
 
+new google '{"native": true}'
+run
+check "reported Google TV default with another Home still receives its workaround" '[ $RC = 0 ] && has "$(st enabled)" $SVC'
+
+new fire7 '{"native": true}'
+run
+check "reported Fire TV default with another Home still receives its workaround" '[ $RC = 0 ] && has "$(st enabled)" $SVC'
+
+for kind in android xiaomi xiaomi_google fire16; do
+  new "$kind" '{"native": true}'
+  run
+  check "$kind supports coexistence without disabling stock" '[ $RC = 0 ] && has "$(st enabled)" $SVC && [ "$(st disabled)" = "[]" ]'
+  new "$kind" '{"native": true, "sole": true}'
+  run
+  check "$kind also supports an optional sole native launcher" '[ $RC = 0 ] && [ -z "$(st enabled)" ] && [ "$(st granted)" = False ]'
+done
+
 new fire7 '{"native": true, "sole": true}'
 run --disable-stock-launcher
 check "an absent stock launcher is never disabled" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(st enabled)" ]'

@@ -74,7 +74,7 @@ class HomeOverride : AccessibilityService() {
 
     override fun onKeyEvent(e: KeyEvent): Boolean {
         if (e.keyCode != KeyEvent.KEYCODE_HOME) return remap(e)
-        if (nativeHome()) return false
+        if (nativeTest || nativeHome()) return false
         // Decided on release, by how long it was held: this TV's remote doesn't reliably send key repeats.
         if (e.action == KeyEvent.ACTION_UP && !e.isCanceled) {
             if (e.eventTime - e.downTime < LONG_PRESS_MS) goHome() else performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
@@ -107,15 +107,15 @@ class HomeOverride : AccessibilityService() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private val watch by lazy { HomeWatch(fireTv(this)) { googleHomes } }
-    private var googleHomes = emptySet<String>()
+    private val watch by lazy { HomeWatch(fireTv(this)) { homes } }
+    private var homes = emptyList<HomeEntry>()
     private var listening = false
     private val cover by lazy { HomeCover(this, handler) }
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             watch.jumped()
             cancelJump()
-            if (i.action == Intent.ACTION_SCREEN_ON && !nativeHome() && watch.wake()) handler.postDelayed(jump, 250)
+            if (i.action == Intent.ACTION_SCREEN_ON && !nativeTest && watch.wake()) handler.postDelayed(jump, 250)
         }
     }
     private val packageReceiver = object : BroadcastReceiver() {
@@ -150,11 +150,12 @@ class HomeOverride : AccessibilityService() {
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         if (!getSystemService(PowerManager::class.java).isInteractive) { watch.jumped(); cancelJump(); return }
-        if (nativeHome()) { watch.jumped(); cancelJump(); return }
+        if (nativeTest) { watch.jumped(); cancelJump(); return }
         val pkg = e.packageName?.toString() ?: return
         if (pkg == packageName && e.className?.toString() != MainActivity::class.java.name) return
         val after = watch.opened(pkg, e.className?.toString(), SystemClock.uptimeMillis())
         if (after == HomeWatch.KEEP) return // the waiting jump stays
+        if (after != null) getSharedPreferences("home", MODE_PRIVATE).edit().remove("native_home_verified").apply()
         if (pkg == packageName) {
             handler.removeCallbacks(jump)
             HomeAlarm.cancel(this) // keep the cover until the first Home frame
@@ -162,26 +163,22 @@ class HomeOverride : AccessibilityService() {
         after?.let { handler.postDelayed(jump, it) }
     }
 
-    /** The Google TV launcher's home screens, asked of the system when the service starts and when a package changes. */
+    /** Declared Home screens and alias targets, refreshed when installed packages change. */
     private fun loadHomes() {
-        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        googleHomes = googleTvHomes(packageManager.queryIntentActivities(home, 0).map {
-            val a = it.activityInfo
-            HomeEntry(a.packageName, a.name, a.targetActivity)
-        })
+        homes = homeEntries()
     }
 
     // Marked as Home so the setup check can tell it from Plume being opened from the apps list.
     private fun goHome() {
-        if (!getSystemService(PowerManager::class.java).isInteractive) return
-        val home = Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (nativeTest || !getSystemService(PowerManager::class.java).isInteractive) return
+        val home = plumeHomeIntent()
         val start = {
             try {
                 if (!HomeAlarm.start(this, home)) startActivity(home)
             } catch (_: RuntimeException) { cancelJump() }
             Unit
         }
-        if (fireTv(this) && !nativeHome()) cover.show(start) else start()
+        if (fireTv(this)) cover.show(start) else start()
     }
 
     override fun onInterrupt() {}
@@ -191,6 +188,13 @@ class HomeOverride : AccessibilityService() {
         var running: HomeOverride? = null
             private set
         internal var turningOff = false
+        internal const val REDIRECTED_HOME = "plume_home_redirect"
+        internal var nativeTest = false
+            set(value) {
+                if (field == value) return
+                field = value
+                running?.homeDrawn()
+            }
         private const val LONG_PRESS_MS = 500L
 
         /** Fire OS keeps Amazon's home and ignores the home role; Plume can only cover it (see [HomeWatch]). */
