@@ -9,7 +9,6 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.ColorFilter
@@ -60,11 +59,8 @@ internal object RemoteBattery {
 
     fun allowed(c: Context) = c.checkSelfPermission(permission()) == PackageManager.PERMISSION_GRANTED
 
-    /** After this long without a reading the icon shows a dash: the remote may be gone. */
-    const val STALE_MS = 30 * 60_000L
-
-    /** The level to show: the last reading, or null (a dash) when it is older than [STALE_MS] or there is none. */
-    fun shown(level: Int?, at: Long, now: Long) = level?.takeIf { at > 0 && now - at in 0 until STALE_MS }
+    /** Keep the last successful level until a read fails; a failed read shows a dash until the next success. */
+    fun shown(level: Int?, failed: Boolean) = level.takeUnless { failed }
 
     /** Whether a read is in progress. */
     fun isBusy() = busy
@@ -188,15 +184,15 @@ internal object RemoteBattery {
 }
 
 /**
- * The top-bar glyph: a small battery filled to [level] with the number beside it (a dash when it is not known), red
- * from the alert level down. It takes the bar's ink as a colour filter like the other icons.
+ * The top-bar glyph: a small battery filled to [level] with the number beside it (a red dash when it is not known), red
+ * at 20% or below. It takes the bar's ink as a colour filter like the other icons.
  */
 internal class RemoteBatteryIcon(private val density: Float, private val level: Int?, private val low: Boolean) : Drawable() {
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.DEFAULT_BOLD
         textSize = density * 11f
     }
-    private val red = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE53935.toInt() }
+    private val red = Paint(ink).apply { color = 0xFFE53935.toInt() }
     private fun dp(v: Float) = v * density
 
     // The battery, a gap, then the widest label ("100%"), measured, so the bar does not clip it and does not move with the level.
@@ -220,7 +216,7 @@ internal class RemoteBatteryIcon(private val density: Float, private val level: 
             inner.right = inner.left + inner.width() * level.coerceIn(0, 100) / 100f
             c.drawRoundRect(inner, dp(1f), dp(1f), if (low) red else ink)
         }
-        c.drawText(RemoteBattery.label(level), left + w + dp(5f), b.exactCenterY() + ink.textSize * 0.36f, ink)
+        c.drawText(RemoteBattery.label(level), left + w + dp(5f), b.exactCenterY() + ink.textSize * 0.36f, if (level == null || low) red else ink)
     }
 
     override fun setAlpha(a: Int) {

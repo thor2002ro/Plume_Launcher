@@ -2230,10 +2230,11 @@ class MainActivity : Activity() {
 
     // ---------- the remote's battery in the top bar (see RemoteBattery) ----------
 
-    /** The last level read, or null when there is none or it is old (see RemoteBattery.STALE_MS). */
-    private fun remoteLevel() = RemoteBattery.shown(prefs.getInt("rb_level", -1).takeIf { it >= 0 }, prefs.getLong("rb_at", 0), System.currentTimeMillis())
+    /** The last successful level, unless the latest read failed or Bluetooth access is unavailable. */
+    private fun remoteLevel() = RemoteBattery.shown(prefs.getInt("rb_level", -1).takeIf { it >= 0 },
+        failed = prefs.getBoolean("rb_failed", false) || !RemoteBattery.allowed(this))
 
-    /** The low-battery alert: 20 % (the default), 15 %, or 0 for off. The icon turns red from there, and a message shows once a day. */
+    /** The daily warning threshold: 20 % (the default), 15 %, or off. The indicator stays red at 20 % or below. */
     private fun lowAt() = prefs.getInt("rb_low", 20).takeIf { it in RemoteBattery.LOWS } ?: 20
 
     private fun lowName(at: Int) = if (at == 0) getString(R.string.remote_low_off) else getString(R.string.remote_low_value, at)
@@ -2249,8 +2250,8 @@ class MainActivity : Activity() {
     private fun updateBatteryIcon() {
         val level = remoteLevel()
         val button = findViewById<ImageView>(R.id.batteryButton)
-        button.setImageDrawable(RemoteBatteryIcon(resources.displayMetrics.density, level, RemoteBattery.isLow(level, lowAt())))
-        button.contentDescription = if (level == null) getString(R.string.remote_battery) else getString(R.string.remote_battery_value, RemoteBattery.label(level))
+        button.setImageDrawable(RemoteBatteryIcon(resources.displayMetrics.density, level, RemoteBattery.isLow(level, 20)))
+        button.contentDescription = if (level == null) getString(R.string.remote_battery_unavailable) else getString(R.string.remote_battery_value, RemoteBattery.label(level))
     }
 
     /**
@@ -2270,7 +2271,10 @@ class MainActivity : Activity() {
         RemoteBattery.read(this) { readings ->
             if (isDestroyed) return@read
             val lowest = RemoteBattery.lowest(readings)
-            lowest?.let { prefs.edit().putInt("rb_level", it).putLong("rb_at", System.currentTimeMillis()).apply() }
+            prefs.edit().apply {
+                putBoolean("rb_failed", lowest == null)
+                if (lowest != null) putInt("rb_level", lowest)
+            }.apply()
             updateBatteryIcon()
             val today = java.time.LocalDate.now().toEpochDay()
             if (!force && RemoteBattery.isLow(lowest, lowAt()) && prefs.getLong("rb_alert_day", 0) != today) { // once a day

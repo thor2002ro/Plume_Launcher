@@ -304,4 +304,5 @@
     <string name="help_fit_all_apps">Réduit légèrement les tuiles de Toutes les applis pour garder la dernière colonne dans l\'écran. Désactivé par défaut.</string>
     <string name="restart_tv">Redémarrer le téléviseur</string>
     <string name="restart_unavailable">Ce téléviseur ne permet pas à Plume d\'ouvrir la confirmation de redémarrage. Utilisez les paramètres du téléviseur.</string>
+    <string name="remote_battery_unavailable">Pile de la télécommande : indisponible</string>
 </resources>

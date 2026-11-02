@@ -14,6 +14,8 @@ class RemoteBatteryTest {
 
     @Test fun lowIsAtOrUnderTheChosenLevelAndNeedsAReading() {
         assertTrue(RemoteBattery.isLow(20, 20))
+        assertTrue(RemoteBattery.isLow(19, 20))
+        assertFalse(RemoteBattery.isLow(21, 20))
         assertTrue(RemoteBattery.isLow(15, 15))
         assertFalse(RemoteBattery.isLow(16, 15))
         assertTrue(RemoteBattery.isLow(0, 20))
@@ -40,12 +42,11 @@ class RemoteBatteryTest {
         assertFalse(RemoteBattery.asksFirst(30)) // BLUETOOTH is granted at install: no dialog
     }
 
-    @Test fun aLevelThatIsTooOldBecomesADash() {
-        val min = 60_000L
-        assertEquals(69, RemoteBattery.shown(69, 1_000, 1_000 + 29 * min))
-        assertEquals(null, RemoteBattery.shown(69, 1_000, 1_000 + 30 * min))
-        assertEquals(null, RemoteBattery.shown(69, 0, 5 * min)) // never read
-        assertEquals(null, RemoteBattery.shown(null, 1_000, 2_000))
-        assertEquals(null, RemoteBattery.shown(69, 10 * min, 5 * min)) // the clock went back
+    @Test fun aFailedReadHidesTheCachedLevelUntilAReadSucceeds() {
+        assertEquals(69, RemoteBattery.shown(69, failed = false))
+        assertEquals(null, RemoteBattery.shown(69, failed = true))
+        assertEquals(null, RemoteBattery.shown(null, failed = true))
+        assertEquals(70, RemoteBattery.shown(70, failed = false))
+        assertEquals(null, RemoteBattery.shown(null, failed = false))
     }
 }
