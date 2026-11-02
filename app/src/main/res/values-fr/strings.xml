@@ -295,7 +295,7 @@
     <string name="help_clock_size">La taille de l’horloge sur l’accueil.</string>
     <string name="section_clock_weather">Horloge et météo</string>
     <string name="remote_battery">Pile de la télécommande</string>
-    <string name="remote_device">Appareil pour la pile</string>
+    <string name="remote_device">Appareils pour la pile : %1$s</string>
     <string name="remote_device_auto">Automatique (pile la plus faible)</string>
     <string name="remote_battery_value">Pile de la télécommande : %1$s</string>
     <string name="remote_reading">Lecture de la télécommande…</string>

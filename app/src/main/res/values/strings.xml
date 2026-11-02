@@ -386,7 +386,7 @@
     <string name="clock_large">Large</string>
     <string name="help_clock_size">How big the clock is on Home.</string>
     <string name="remote_battery">Remote battery</string>
-    <string name="remote_device">Battery device</string>
+    <string name="remote_device">Battery devices: %1$s</string>
     <string name="remote_device_auto">Automatic (lowest battery)</string>
     <string name="remote_battery_value">Remote battery: %1$s</string>
     <string name="remote_reading">Reading the remote…</string>

@@ -73,14 +73,27 @@ internal object RemoteBattery {
     /** "Name 69%, Other 40%" for the message shown when the icon is selected. */
     fun describe(readings: List<Reading>) = readings.joinToString(", ") { "${it.name} ${it.level}%" }
 
-    internal fun matchesSelection(address: String, selected: String?) = selected == null || address == selected
+    internal fun matchesSelection(address: String, selected: Set<String>?) = selected == null || address in selected
+
+    internal fun selection(stored: Set<String>?, legacy: String?) = stored ?: legacy?.let { setOf(it) }
+
+    @SuppressLint("MissingPermission")
+    fun names(c: Context): Map<String, String> {
+        if (!allowed(c)) return emptyMap()
+        return try {
+            (c.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+                ?.bondedDevices.orEmpty().associate { it.address to (it.name ?: it.address) }
+        } catch (e: SecurityException) {
+            emptyMap()
+        }
+    }
 
     /**
      * Reads paired devices, or only [selected], and calls [done] on the main thread with what could be read.
      * Devices are tried one after the other; a paired device that is away fails at the timeout.
      */
     @SuppressLint("MissingPermission")
-    fun read(c: Context, selected: String? = null, done: (List<Reading>) -> Unit) {
+    fun read(c: Context, selected: Set<String>? = null, done: (List<Reading>) -> Unit) {
         if (busy) return
         if (!allowed(c)) return done(emptyList())
         val adapter = (c.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter

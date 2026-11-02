@@ -14,11 +14,11 @@ class RemoteBatterySelectionTest {
     }
 
     @Test fun choosingRemoteExcludesOtherPairedDevices() {
-        assertTrue(RemoteBattery.matchesSelection(remote, remote))
-        assertFalse(RemoteBattery.matchesSelection(controller, remote))
+        assertTrue(RemoteBattery.matchesSelection(remote, setOf(remote)))
+        assertFalse(RemoteBattery.matchesSelection(controller, setOf(remote)))
     }
 
     @Test fun aMissingSelectedDeviceDoesNotFallBackToAnotherDevice() {
-        assertFalse(RemoteBattery.matchesSelection(remote, controller))
+        assertFalse(RemoteBattery.matchesSelection(remote, setOf(controller)))
     }
 }

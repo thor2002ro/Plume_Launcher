@@ -81,6 +81,7 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.HorizontalScrollView
@@ -2310,6 +2311,16 @@ class MainActivity : Activity() {
 
     private fun lowName(at: Int) = if (at == 0) getString(R.string.remote_low_off) else getString(R.string.remote_low_value, at)
 
+    private fun selectedBatteryDevices() = RemoteBattery.selection(prefs.getStringSet("rb_devices", null)?.toSet(),
+        prefs.getString("rb_device", null))
+
+    private fun batteryDeviceSummary(): String {
+        val selected = selectedBatteryDevices()
+        if (selected == null) return prefs.getString("rb_names", null) ?: getString(R.string.remote_device_auto)
+        val names = RemoteBattery.names(this)
+        return selected.map { names[it] ?: it }.sorted().joinToString(", ").ifEmpty { getString(R.string.off) }
+    }
+
     private val refreshBatteryOnResume = Runnable { if (resumed) refreshRemoteBattery() }
 
     private fun scheduleRemoteBattery() {
@@ -2339,10 +2350,10 @@ class MainActivity : Activity() {
         }
         if (force && RemoteBattery.isBusy()) return toast(getString(R.string.remote_reading))
         if (force) toast(getString(R.string.remote_reading))
-        val selected = prefs.getString("rb_device", null)
+        val selected = selectedBatteryDevices()
         RemoteBattery.read(this, selected) { readings ->
             if (isDestroyed) return@read
-            if (selected != prefs.getString("rb_device", null)) {
+            if (selected != selectedBatteryDevices()) {
                 refreshRemoteBattery()
                 return@read
             }
@@ -2350,6 +2361,7 @@ class MainActivity : Activity() {
             prefs.edit().apply {
                 putBoolean("rb_failed", lowest == null)
                 if (lowest != null) putInt("rb_level", lowest)
+                if (readings.isNotEmpty()) putString("rb_names", readings.map { it.name }.sorted().joinToString(", "))
             }.apply()
             updateBatteryIcon()
             val today = java.time.LocalDate.now().toEpochDay()
@@ -3008,7 +3020,7 @@ class MainActivity : Activity() {
         val first = settingsList.childCount
         rows.forEachIndexed { i, (name, value, action) ->
             val style = styles.getOrNull(i)
-            settingsList.addView(settingsRow(name, value, steps.getOrNull(i), style, action),
+            settingsList.addView(settingsRow(name, value, steps.getOrNull(i), style, action = action),
                 LinearLayout.LayoutParams(MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { if (style?.header != true) topMargin = dp(4) })
         }
         // Focus wraps: Up from the first row goes to the last, Down from the last to the first. Group titles are skipped.
@@ -3313,7 +3325,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun settingsRow(title: String, value: String, step: ((Int) -> Unit)? = null, style: RowStyle? = null, action: () -> Unit): View {
+    private fun settingsRow(title: String, value: String, step: ((Int) -> Unit)? = null, style: RowStyle? = null, wrapTitle: Boolean = false, action: () -> Unit): View {
         if (style?.header == true) return groupTitle(title)
         if (style?.hero == true) return heroRow(title, value, style, action)
         val wrap = LinearLayout.LayoutParams.WRAP_CONTENT
@@ -3321,7 +3333,11 @@ class MainActivity : Activity() {
         // Choices that would squeeze the title go under it, across the row.
         val stacked = style?.art != null || options != null && (options.size > 2 || title.length + options.sumOf { it.first.length } > 26)
         val restyle = mutableListOf<(Boolean) -> Unit>()
-        val name = label(title, 16f).apply { setTextColor(restInk()); panelShadow() }
+        val name = label(title, 16f).apply {
+            if (wrapTitle) maxLines = Int.MAX_VALUE
+            setTextColor(restInk())
+            panelShadow()
+        }
         val sub = style?.sub?.let { label(it, 13f).apply { setTextColor(valueInk()); panelShadow() } }
         val iconView = style?.icon?.let { icon(it, 24, iconInk(false)) }
         val line = LinearLayout(this).apply {
@@ -4251,7 +4267,7 @@ class MainActivity : Activity() {
     }
 
     /** A small Plume-styled menu just above [anchor] (under it when [below]); Back closes it. [rows] builds its rows. */
-    private fun popupMenu(anchor: View, below: Boolean = false, rows: (dismiss: () -> Unit) -> List<View>) {
+    private fun popupMenu(anchor: View, below: Boolean = false, onDismiss: (() -> Unit)? = null, rows: (dismiss: () -> Unit) -> List<View>) {
         val list: LinearLayout = if (glassActive()) glassSurface(dp(14).toFloat()) else LinearLayout(this).apply {
             background = if (dark) rimCard(dp(12), false, solid = true) else GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
@@ -4262,6 +4278,7 @@ class MainActivity : Activity() {
         list.orientation = LinearLayout.VERTICAL
         list.setPadding(dp(6), dp(6), dp(6), dp(6))
         val menu = PopupWindow(list, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT, true)
+        menu.setOnDismissListener { onDismiss?.invoke() }
         rows { menu.dismiss() }.forEachIndexed { i, row ->
             list.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 if (i > 0) topMargin = dp(2)
@@ -4282,8 +4299,8 @@ class MainActivity : Activity() {
         list.getChildAt(0).requestFocus()
     }
 
-    private fun holdMenu(anchor: View, items: List<Pair<String, () -> Unit>>, below: Boolean = false) =
-        popupMenu(anchor, below) { dismiss -> items.map { (name, action) -> settingsRow(name, "") { dismiss(); action() } } }
+    private fun holdMenu(anchor: View, items: List<Pair<String, () -> Unit>>, below: Boolean = false, wrapTitles: Boolean = false) =
+        popupMenu(anchor, below) { dismiss -> items.map { (name, action) -> settingsRow(name, "", wrapTitle = wrapTitles) { dismiss(); action() } } }
 
     // ---------- the top bar: hold OK on an icon to move it, hide it, or add one back ----------
 
@@ -4367,9 +4384,9 @@ class MainActivity : Activity() {
             getString(R.string.move) to { startTopMove(v) },
             if (v.id == R.id.launcherSettings) null else getString(R.string.hide) to { hideTop(v) },
             if (hidden.isEmpty()) null else getString(R.string.add_icon) to { addIconMenu(v) },
-            if (v.id != R.id.batteryButton) null else getString(R.string.remote_device) to { remoteDeviceMenu(v) },
+            if (v.id != R.id.batteryButton) null else getString(R.string.remote_device, batteryDeviceSummary()) to { remoteDeviceMenu(v) },
             if (v.id != R.id.batteryButton) null else getString(R.string.remote_low_alert, lowName(lowAt())) to { cycleLowAlert() },
-        ), below = true)
+        ), below = true, wrapTitles = v.id == R.id.batteryButton)
     }
 
     private fun remoteDeviceMenu(anchor: View) {
@@ -4382,20 +4399,48 @@ class MainActivity : Activity() {
         RemoteBattery.read(this) { readings ->
             if (isDestroyed || !resumed || !anchor.isShown || locked()) return@read
             if (readings.isEmpty()) toast(getString(R.string.remote_not_found))
-            val selected = prefs.getString("rb_device", null)
-            val choices = listOf(null to getString(R.string.remote_device_auto)) + readings.map {
-                it.address to "${it.name} · ${it.address.takeLast(5)} · ${it.level}%"
-            }
-            holdMenu(anchor, choices.map { (address, name) ->
-                "${if (address == selected) "$CHOSEN " else ""}$name" to {
-                    if (address != prefs.getString("rb_device", null)) {
-                        prefs.edit().putString("rb_device", address).remove("rb_level")
-                            .putBoolean("rb_failed", true).remove("rb_alert_day").apply()
-                        updateBatteryIcon()
+            var selected = selectedBatteryDevices()
+            val names = RemoteBattery.names(this)
+            val levels = readings.associateBy { it.address }
+            val addresses = (levels.keys + selected.orEmpty()).sortedBy { names[it] ?: it }
+            var changed = false
+            var updating = false
+            val boxes = linkedMapOf<String?, CheckBox>()
+            popupMenu(anchor, below = true, onDismiss = {
+                if (changed && !isDestroyed && resumed) refreshRemoteBattery(force = true)
+            }) { dismiss ->
+                fun choice(address: String?, title: String): View = CheckBox(this).apply {
+                    text = title
+                    textSize = 14f
+                    setPadding(dp(14), dp(8), dp(14), dp(8))
+                    setTextColor(restInk())
+                    buttonTintList = ColorStateList.valueOf(restInk())
+                    isChecked = if (address == null) selected == null else address in selected.orEmpty()
+                    boxes[address] = this
+                    panelFocus(this, 12, null, null) { focused ->
+                        setTextColor(if (focused) focusInk() else restInk())
+                        buttonTintList = ColorStateList.valueOf(if (focused) focusInk() else restInk())
                     }
-                    refreshRemoteBattery(force = true)
+                    setOnCheckedChangeListener { _, checked ->
+                        if (!updating) {
+                            selected = if (address == null) {
+                                if (checked) null else emptySet()
+                            } else if (checked) selected.orEmpty() + address else selected.orEmpty() - address
+                            prefs.edit().putStringSet("rb_devices", selected).remove("rb_device").remove("rb_level")
+                                .remove("rb_names").putBoolean("rb_failed", true).remove("rb_alert_day").apply()
+                            changed = true
+                            updateBatteryIcon()
+                            updating = true
+                            boxes.forEach { (key, box) -> box.isChecked = if (key == null) selected == null else key in selected.orEmpty() }
+                            updating = false
+                        }
+                    }
                 }
-            }, below = true)
+                listOf(choice(null, getString(R.string.remote_device_auto))) + addresses.map { address ->
+                    val name = names[address] ?: levels[address]?.name ?: address
+                    choice(address, "$name · ${RemoteBattery.label(levels[address]?.level)}")
+                } + settingsRow(getString(R.string.done), "") { dismiss() }
+            }
         }
     }
 
