@@ -33,6 +33,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **Power menu icon.** Hold **OK** on a top-bar icon and select **Add icon**, then **Power menu**. The icon opens the Android power menu.
 - **Remote battery.** The top bar always shows your Bluetooth remote's battery, with a daily alert at 20% or less. Hold **OK** on its icon to change the alert.
 - **More apps.** Plume shows installed apps that do not have a TV launcher entry. Some apps need touch or a mouse.
+- **Fit All apps to screen.** Enable this option in **Plume settings → Apps row** to keep the last column inside the screen. It is off by default.
 - Home setup checks that the Home button service is running and includes both ADB commands for restricted installations.
 - **Italian.** Plume is now available in Italian.
 - **The selected tile rises.** The selected tile or card moves up out of its row, so you can find it from across the room.

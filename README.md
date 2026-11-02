@@ -161,6 +161,7 @@ Tests run against a fake `adb`, no TV needed: `sh tools/plume-install-test/run.s
 | Change app size, icon style or names | **Plume settings → Apps row → Size**, **Icon style** or **App names** |
 | Choose apps for Continue Watching | **Plume settings → Shows row → From apps** |
 | Show each source of the shows row on its own | **Plume settings → Shows row → Rows** (see [Rows of the shows row](#rows-of-the-shows-row)) |
+| Keep the last All apps column inside the screen | Enable **Plume settings → Apps row → Fit All apps to screen** (off by default) |
 | Change the clock | **Plume settings → Clock & weather → Clock style** or **Clock size** |
 | Move, hide or add a top-bar icon | Hold **OK** on the icon, then **Move**, **Hide** or **Add icon** |
 | Remap a remote key | **Plume settings → Home & remote → Remote keys → Add a key**, then press it |

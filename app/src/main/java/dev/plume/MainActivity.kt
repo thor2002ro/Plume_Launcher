@@ -2616,6 +2616,10 @@ class MainActivity : Activity() {
                 renderApps()
                 renderSettings(R.string.row_size)
             },
+            R.string.fit_all_apps to { _ ->
+                prefs.edit().putBoolean("fit_all_apps", !prefs.getBoolean("fit_all_apps", false)).apply()
+                renderSettings(R.string.fit_all_apps)
+            },
             R.string.row_position to { d ->
                 prefs.edit().putString("row_align", ROW_ALIGN.keys.toList().step(rowAlign(), d)).apply()
                 alignRow()
@@ -2684,6 +2688,9 @@ class MainActivity : Activity() {
             },
             R.string.row_size to Triple(getString(R.string.row_size), getString(ROW_SIZES.getValue(rowSize()).first)) {
                 steps[R.string.row_size]!!(1)
+            },
+            R.string.fit_all_apps to Triple(getString(R.string.fit_all_apps), toggle(prefs.getBoolean("fit_all_apps", false))) {
+                steps[R.string.fit_all_apps]!!(1)
             },
             R.string.restore_hidden to Triple(getString(R.string.restore_hidden), if (hidden == 0) getString(R.string.none_hidden) else resources.getQuantityString(R.plurals.show_again, hidden, hidden)) {
                 prefs.edit().remove("hidden_watch").apply()
@@ -2769,7 +2776,7 @@ class MainActivity : Activity() {
             Triple(R.string.section_style, "${rows[R.string.theme]!!.second} · ${getString(glassName())}",
                 listOf(R.string.theme, R.string.glass, R.string.app_animations)),
             Triple(R.string.section_app_row, "${rows[R.string.apps_in_row]!!.second} · ${rows[R.string.row_position]!!.second}",
-                listOf(R.string.edit_apps_row, R.string.apps_in_row, R.string.sort_apps, R.string.icon_style, R.string.row_size, R.string.app_names, R.string.row_position)),
+                listOf(R.string.edit_apps_row, R.string.apps_in_row, R.string.sort_apps, R.string.icon_style, R.string.row_size, R.string.app_names, R.string.row_position, R.string.fit_all_apps)),
             // "When hidden" only means something once the row can hide.
             Triple(R.string.bottom_row, "${rowName()} · ${rows[R.string.show_row]!!.second}", listOfNotNull(R.string.show_row, R.string.apps_when_hidden.takeIf { rowShow() != "always" },
                 R.string.row_name, R.string.show_icons, R.string.cw_apps, R.string.cw_channels, R.string.cards_rows, R.string.restore_hidden)),
@@ -4542,7 +4549,8 @@ class MainActivity : Activity() {
     private fun openAllApps() {
         allAppsGrid.removeAllViews()
         val gap = dp(10)
-        val width = (resources.displayMetrics.widthPixels - dp(96) - gap * 5) / 6
+        val gaps = if (prefs.getBoolean("fit_all_apps", false)) 6 else 5
+        val width = (resources.displayMetrics.widthPixels - dp(96) - gap * gaps) / 6
         for (a in sortedApps()) {
             val t = appTile(a) // holding OK here pins it to the row (see onHold)
             allAppsGrid.addView(t, GridLayout.LayoutParams().apply {
@@ -5998,6 +6006,7 @@ class MainActivity : Activity() {
             R.string.section_lock to R.string.help_lock,
             R.string.weather_location to R.string.help_location,
             R.string.edit_apps_row to R.string.help_rearrange, R.string.apps_in_row to R.string.help_choose_apps,
+            R.string.fit_all_apps to R.string.help_fit_all_apps,
             R.string.sort_apps to R.string.help_order, R.string.icon_style to R.string.help_icon_style, R.string.row_size to R.string.help_row_size,
             R.string.apps_when_hidden to R.string.help_apps_when_hidden, R.string.row_name to R.string.help_row_name,
             R.string.show_icons to R.string.help_show_icons,
