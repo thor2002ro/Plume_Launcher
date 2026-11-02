@@ -4358,9 +4358,9 @@ class MainActivity : Activity() {
      * The system's own power dialog (power off, restart; Cancel leaves everything as it was). Only the Home button service can
      * ask for it, so without the service the icon offers to turn that on.
      */
-    private fun powerDialog() {
+    private fun powerDialog(anchor: View = findViewById(R.id.powerButton)) {
         val service = HomeOverride.running
-            ?: return holdMenu(findViewById(R.id.powerButton), listOf(getString(R.string.power_needs_home) to { turnOnHomeButton() }), below = true)
+            ?: return holdMenu(anchor, listOf(getString(R.string.power_needs_home) to { turnOnHomeButton() }), below = true)
         Remap.powerMenu(service)
     }
 
@@ -4372,7 +4372,7 @@ class MainActivity : Activity() {
         try {
             startActivity(intent)
         } catch (e: RuntimeException) {
-            toast(getString(R.string.restart_unavailable), long = true, system = true)
+            powerDialog(findViewById(R.id.restartButton))
         }
     }
 

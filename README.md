@@ -172,7 +172,7 @@ Tests run against a fake `adb`, no TV needed: `sh tools/plume-install-test/run.s
 | Lock the layout | **Plume settings → PIN lock**. Forgot the PIN? **Android Settings → Apps → Plume → Clear data**. |
 | Update Plume | **Plume settings → Updates** |
 | Hide or restore the remote battery | Enabled by default. Hold **OK** on **Remote battery → Hide**; restore it with another icon's **Add icon → Remote battery** |
-| Open the TV's restart confirmation | Hold **OK** on a top-bar icon, then **Add icon → Restart TV**. The TV must allow access to its system confirmation; Plume does not force a reboot |
+| Open the TV's restart confirmation or power menu | Hold **OK** on a top-bar icon, then **Add icon → Restart TV**. If Android blocks the confirmation, Plume opens the system power menu through its Home button service. Plume does not force a reboot |
 | Open the Google TV dashboard | Hold **Home** |
 
 <p align="center">
