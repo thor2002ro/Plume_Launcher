@@ -29,8 +29,8 @@ import java.util.UUID
  *  2. the input device's battery state (Android 12 and newer: gamepads, some HID remotes);
  *  3. the remote itself: a Bluetooth LE remote that is a HID device and offers the standard Battery Service.
  * A remote that offers none of these (an infrared remote, a radio remote with a USB dongle, a remote with a battery
- * service of its own making) has no icon level: the icon shows a dash. The GATT connection is short, only while the
- * icon is on the bar, at most once in ten minutes, and nothing is read without the permission.
+ * service of its own making) has no icon level: the icon shows a dash. Home requests a short read five seconds after
+ * resuming or waking, or when the icon is selected. Nothing is read without the permission.
  */
 internal object RemoteBattery {
     private val HID = UUID.fromString("00001812-0000-1000-8000-00805f9b34fb")
@@ -39,9 +39,6 @@ internal object RemoteBattery {
 
     /** The low-battery alerts to choose from, in the order the menu cycles through them: 20 %, 15 %, off (0). */
     val LOWS = listOf(20, 15, 0)
-
-    /** How long a reading stays good before the home screen asks again. */
-    const val FRESH_MS = 10 * 60_000L
 
     private const val TIMEOUT_MS = 12_000L
     private val main by lazy { Handler(Looper.getMainLooper()) } // lazy: the unit tests use the rules below with no Android
@@ -64,10 +61,7 @@ internal object RemoteBattery {
     fun allowed(c: Context) = c.checkSelfPermission(permission()) == PackageManager.PERMISSION_GRANTED
 
     /** After this long without a reading the icon shows a dash: the remote may be gone. */
-    const val STALE_MS = 3 * FRESH_MS
-
-    /** Whether a reading made at [at] is still good at [now]. */
-    fun fresh(at: Long, now: Long) = at > 0 && now - at in 0 until FRESH_MS
+    const val STALE_MS = 30 * 60_000L
 
     /** The level to show: the last reading, or null (a dash) when it is older than [STALE_MS] or there is none. */
     fun shown(level: Int?, at: Long, now: Long) = level?.takeIf { at > 0 && now - at in 0 until STALE_MS }

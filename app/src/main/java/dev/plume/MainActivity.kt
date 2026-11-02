@@ -373,6 +373,13 @@ class MainActivity : Activity() {
         }
     }
 
+    private val batteryScreenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            if (i.action == Intent.ACTION_SCREEN_ON && resumed) scheduleRemoteBattery()
+            else ui.removeCallbacks(refreshBatteryOnResume)
+        }
+    }
+
     private val net = object : ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(n: Network, caps: NetworkCapabilities) {
             ui.post {
@@ -506,6 +513,10 @@ class MainActivity : Activity() {
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         })
+        registerReceiver(batteryScreenReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        })
         // Application context: ConnectivityManager keeps its first instance (and that instance's context) in a
         // static callback handler forever, so an Activity context here leaks the whole first home screen.
         applicationContext.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(net)
@@ -550,8 +561,7 @@ class MainActivity : Activity() {
         ui.removeCallbacks(wallpaperTick)
         ui.post(wallpaperTick)
         updateFeatured()
-        ui.removeCallbacks(batteryTick)
-        ui.post(batteryTick)
+        scheduleRemoteBattery()
         // Gallery chosen but its paintings missing (updated from a version that bundled them): fetch them.
         if (galleryOn() && photoScreensaver() == null && !aerialScreensaverOn() && !paintingsReady(this)) downloadPaintings {}
         checkUpdate(force = false)
@@ -595,7 +605,7 @@ class MainActivity : Activity() {
             ui.removeCallbacks(refreshIfDirty)
             ui.removeCallbacks(homeServiceCheck)
             ui.removeCallbacks(weatherTick)
-            ui.removeCallbacks(batteryTick)
+            ui.removeCallbacks(refreshBatteryOnResume)
             ui.removeCallbacks(themeTick)
             ui.removeCallbacks(wallpaperTick)
             if (editing) endEdit()
@@ -625,6 +635,7 @@ class MainActivity : Activity() {
             videoWallpaper.clear()
             if (Bing.onChanged === bingChanged) Bing.onChanged = null
             unregisterReceiver(packageReceiver)
+            unregisterReceiver(batteryScreenReceiver)
             applicationContext.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(net)
             getSystemService(TvInputManager::class.java)?.unregisterCallback(inputCallback)
             upload?.stop()
@@ -2227,12 +2238,12 @@ class MainActivity : Activity() {
 
     private fun lowName(at: Int) = if (at == 0) getString(R.string.remote_low_off) else getString(R.string.remote_low_value, at)
 
-    private val batteryTick = object : Runnable {
-        override fun run() {
-            updateBatteryIcon()
-            refreshRemoteBattery()
-            ui.postDelayed(this, RemoteBattery.FRESH_MS)
-        }
+    private val refreshBatteryOnResume = Runnable { if (resumed) refreshRemoteBattery() }
+
+    private fun scheduleRemoteBattery() {
+        updateBatteryIcon()
+        ui.removeCallbacks(refreshBatteryOnResume)
+        ui.postDelayed(refreshBatteryOnResume, 5_000L)
     }
 
     private fun updateBatteryIcon() {
@@ -2247,6 +2258,7 @@ class MainActivity : Activity() {
      * permission the first time on Android 12 and newer. Before that the permission is granted at install.
      */
     private fun refreshRemoteBattery(force: Boolean = false) {
+        if (force) ui.removeCallbacks(refreshBatteryOnResume)
         if (R.id.batteryButton !in shownTop()) return
         if (!RemoteBattery.allowed(this)) {
             updateBatteryIcon()
@@ -2254,7 +2266,6 @@ class MainActivity : Activity() {
             return
         }
         if (force && RemoteBattery.isBusy()) return toast(getString(R.string.remote_reading))
-        if (!force && RemoteBattery.fresh(prefs.getLong("rb_at", 0), System.currentTimeMillis())) return
         if (force) toast(getString(R.string.remote_reading))
         RemoteBattery.read(this) { readings ->
             if (isDestroyed) return@read
@@ -4230,7 +4241,6 @@ class MainActivity : Activity() {
             bar.addView(v, start + i, lp)
         }
         updateBatteryIcon() // an icon just added has no picture yet
-        refreshRemoteBattery()
         // Taking the focused icon out passed focus on, down to the empty app row's scroller on a cold start, and
         // then the first fill of the row did not take it. Give it back to the bar.
         focused?.let { (if (it.visibility == View.VISIBLE) it else findViewById(shown.first())).requestFocus() }
