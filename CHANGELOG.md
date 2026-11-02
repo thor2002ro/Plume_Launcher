@@ -28,6 +28,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **New 4K wallpapers.** Select **Plume settings → Wallpaper → Built-in → More photos** to download ten 4K photos. New photos appear without an app update.
 - **Aerial Views screensaver.** Select **Plume settings → Screensaver → Screensaver → Aerial Views**. It uses the scenes that you downloaded for the wallpaper, so each scene downloads only once.
 - **Shows wallpaper.** The pictures of the shows in your apps become your wallpaper. Select **Plume settings → Wallpaper → Shows from** to choose the apps. Plume fetches nothing until you select it.
+- **Rows of the shows row.** Select **Plume settings → Shows row → Rows**, then select **Mixed** (the default), **By title** or **Per channel**. The page says what each choice does and which buttons to press. By title and Per channel show one source at a time: Watch Next, or one channel that an app adds. The cards stay in place and change their picture, title and progress.
 - **Edit the top bar.** Hold **OK** on an icon at the top of the home screen. Select **Move**, **Hide** or **Add icon**. **Plume settings** stays on the bar.
 - **Power menu icon.** Hold **OK** on a top-bar icon and select **Add icon**, then **Power menu**. The icon opens the Android power menu.
 - **More apps.** Plume shows installed apps that do not have a TV launcher entry. Some apps need touch or a mouse.
