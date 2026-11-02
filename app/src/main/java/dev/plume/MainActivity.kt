@@ -55,10 +55,12 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
 import android.provider.MediaStore
@@ -71,6 +73,7 @@ import android.text.style.BulletSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.util.LruCache
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -379,8 +382,13 @@ class MainActivity : Activity() {
 
     private val batteryScreenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            if (i.action == Intent.ACTION_SCREEN_ON && resumed) scheduleRemoteBattery()
-            else ui.removeCallbacks(refreshBatteryOnResume)
+            if (i.action == Intent.ACTION_SCREEN_ON && resumed) {
+                scheduleRemoteBattery()
+                scheduleWifiSpeed()
+            } else {
+                ui.removeCallbacks(refreshBatteryOnResume)
+                ui.removeCallbacks(wifiSpeedTick)
+            }
         }
     }
 
@@ -577,6 +585,7 @@ class MainActivity : Activity() {
         ui.post(wallpaperTick)
         updateFeatured()
         scheduleRemoteBattery()
+        scheduleWifiSpeed()
         // Gallery chosen but its paintings missing (updated from a version that bundled them): fetch them.
         if (galleryOn() && photoScreensaver() == null && !aerialScreensaverOn() && !paintingsReady(this)) downloadPaintings {}
         checkUpdate(force = false)
@@ -629,6 +638,7 @@ class MainActivity : Activity() {
             ui.removeCallbacks(homeServiceCheck)
             ui.removeCallbacks(weatherTick)
             ui.removeCallbacks(refreshBatteryOnResume)
+            ui.removeCallbacks(wifiSpeedTick)
             ui.removeCallbacks(themeTick)
             ui.removeCallbacks(wallpaperTick)
             if (editing) endEdit()
@@ -1225,11 +1235,12 @@ class MainActivity : Activity() {
     private fun iconShadow(v: ImageView) {
         val layers = v.background as? LayerDrawable ?: return
         val icon = v.drawable?.constantState?.newDrawable(resources)?.mutate()
-        val box = v.layoutParams.width - v.paddingLeft - v.paddingRight
-        if (wpThumb == null || icon == null || box <= 0) return layers.setDrawable(0, ColorDrawable(Color.TRANSPARENT))
+        val width = v.layoutParams.width - v.paddingLeft - v.paddingRight
+        val height = v.layoutParams.height - v.paddingTop - v.paddingBottom
+        if (wpThumb == null || icon == null || width <= 0 || height <= 0) return layers.setDrawable(0, ColorDrawable(Color.TRANSPARENT))
         val blur = dp(2)
-        val mask = Bitmap.createBitmap(box + blur * 2, box + blur * 2, Bitmap.Config.ARGB_8888)
-        icon.setBounds(blur, blur, blur + box, blur + box)
+        val mask = Bitmap.createBitmap(width + blur * 2, height + blur * 2, Bitmap.Config.ARGB_8888)
+        icon.setBounds(blur, blur, blur + width, blur + height)
         icon.draw(Canvas(mask))
         val shape = mask.extractAlpha()
         mask.eraseColor(Color.TRANSPARENT)
@@ -3607,9 +3618,54 @@ class MainActivity : Activity() {
         return track to paint
     }
 
+    private fun wifiSpeedOn() = prefs.getBoolean("wifi_link_speed", false)
+
+    private fun canPollWifiSpeed() = WifiLinkSpeed.shouldPoll(wifiSpeedOn(), resumed, wifi.visibility == View.VISIBLE,
+        getSystemService(PowerManager::class.java).isInteractive)
+
+    private val wifiSpeedTick = object : Runnable {
+        override fun run() {
+            if (!canPollWifiSpeed()) return
+            refreshNetworkStatus()
+            ui.postDelayed(this, WifiLinkSpeed.REFRESH_MS)
+        }
+    }
+
+    private fun scheduleWifiSpeed() {
+        ui.removeCallbacks(wifiSpeedTick)
+        if (canPollWifiSpeed()) ui.post(wifiSpeedTick)
+    }
+
+    private fun refreshNetworkStatus() {
+        val manager = applicationContext.getSystemService(ConnectivityManager::class.java)
+        showNet(manager.getNetworkCapabilities(manager.activeNetwork))
+    }
+
+    @Suppress("DEPRECATION") // Live link speed polling on API 26+; no location-sensitive Wi-Fi fields are read.
     private fun showNet(caps: NetworkCapabilities?) {
         val ethernet = caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
-        wifi.setImageResource(if (ethernet) R.drawable.ic_ethernet else R.drawable.ic_wifi)
+        val padding = dp(if (ethernet) 8 else 6)
+        wifi.setPadding(padding, padding, padding, padding)
+        val showSpeed = wifiSpeedOn() && !ethernet
+        if (showSpeed) {
+            val connected = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            val speed = if (connected) try {
+                applicationContext.getSystemService(WifiManager::class.java)?.connectionInfo?.linkSpeed
+            } catch (_: SecurityException) { null } else null
+            val label = WifiLinkSpeed.label(WifiLinkSpeed.shown(connected, speed))
+            val metrics = resources.displayMetrics
+            wifi.setImageDrawable(WifiLinkSpeedIcon(metrics.density,
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, metrics), getDrawable(R.drawable.ic_wifi)!!.mutate(), label))
+            wifi.contentDescription = getString(R.string.wifi_link_speed_value, label)
+        } else {
+            wifi.setImageResource(if (ethernet) R.drawable.ic_ethernet else R.drawable.ic_wifi)
+            wifi.contentDescription = getString(R.string.network_settings)
+        }
+        val width = if (showSpeed) wifi.drawable.intrinsicWidth + wifi.paddingLeft + wifi.paddingRight else dp(36)
+        val height = if (showSpeed) maxOf(dp(36), wifi.drawable.intrinsicHeight + wifi.paddingTop + wifi.paddingBottom) else dp(36)
+        if (wifi.layoutParams.width != width || wifi.layoutParams.height != height) {
+            wifi.layoutParams = wifi.layoutParams.apply { this.width = width; this.height = height }
+        }
         iconShadow(wifi) // the shadow takes the new picture's shape
         // Dim only the icon: the focus ring is the background and should stay full strength.
         wifi.imageAlpha = if (caps == null) 90 else 255
@@ -4341,6 +4397,7 @@ class MainActivity : Activity() {
             bar.addView(v, start + i, lp)
         }
         updateBatteryIcon() // an icon just added has no picture yet
+        scheduleWifiSpeed()
         // Taking the focused icon out passed focus on, down to the empty app row's scroller on a cold start, and
         // then the first fill of the row did not take it. Give it back to the bar.
         focused?.let { (if (it.visibility == View.VISIBLE) it else findViewById(shown.first())).requestFocus() }
@@ -4384,6 +4441,11 @@ class MainActivity : Activity() {
             getString(R.string.move) to { startTopMove(v) },
             if (v.id == R.id.launcherSettings) null else getString(R.string.hide) to { hideTop(v) },
             if (hidden.isEmpty()) null else getString(R.string.add_icon) to { addIconMenu(v) },
+            if (v.id != R.id.wifi) null else getString(R.string.wifi_link_speed_option, getString(if (wifiSpeedOn()) R.string.on else R.string.off)) to {
+                prefs.edit().putBoolean("wifi_link_speed", !wifiSpeedOn()).apply()
+                refreshNetworkStatus()
+                scheduleWifiSpeed()
+            },
             if (v.id != R.id.batteryButton) null else getString(R.string.remote_device, batteryDeviceSummary()) to { remoteDeviceMenu(v) },
             if (v.id != R.id.batteryButton) null else getString(R.string.remote_low_alert, lowName(lowAt())) to { cycleLowAlert() },
         ), below = true, wrapTitles = v.id == R.id.batteryButton)

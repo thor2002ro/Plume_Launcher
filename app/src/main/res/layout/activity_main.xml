@@ -107,7 +107,7 @@
                 android:layout_height="36dp"
                 android:contentDescription="@string/network_settings"
                 android:focusable="true"
-                android:padding="8dp"
+                android:padding="6dp"
                 android:src="@drawable/ic_wifi" />
 
             <ImageView
