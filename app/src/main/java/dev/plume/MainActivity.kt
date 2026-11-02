@@ -2339,8 +2339,13 @@ class MainActivity : Activity() {
         }
         if (force && RemoteBattery.isBusy()) return toast(getString(R.string.remote_reading))
         if (force) toast(getString(R.string.remote_reading))
-        RemoteBattery.read(this) { readings ->
+        val selected = prefs.getString("rb_device", null)
+        RemoteBattery.read(this, selected) { readings ->
             if (isDestroyed) return@read
+            if (selected != prefs.getString("rb_device", null)) {
+                refreshRemoteBattery()
+                return@read
+            }
             val lowest = RemoteBattery.lowest(readings)
             prefs.edit().apply {
                 putBoolean("rb_failed", lowest == null)
@@ -4362,8 +4367,36 @@ class MainActivity : Activity() {
             getString(R.string.move) to { startTopMove(v) },
             if (v.id == R.id.launcherSettings) null else getString(R.string.hide) to { hideTop(v) },
             if (hidden.isEmpty()) null else getString(R.string.add_icon) to { addIconMenu(v) },
+            if (v.id != R.id.batteryButton) null else getString(R.string.remote_device) to { remoteDeviceMenu(v) },
             if (v.id != R.id.batteryButton) null else getString(R.string.remote_low_alert, lowName(lowAt())) to { cycleLowAlert() },
         ), below = true)
+    }
+
+    private fun remoteDeviceMenu(anchor: View) {
+        if (!RemoteBattery.allowed(this)) {
+            if (RemoteBattery.asksFirst()) requestPermissions(arrayOf(RemoteBattery.permission()), BLUETOOTH_REQUEST)
+            return
+        }
+        if (RemoteBattery.isBusy()) return toast(getString(R.string.remote_reading))
+        toast(getString(R.string.remote_reading))
+        RemoteBattery.read(this) { readings ->
+            if (isDestroyed || !resumed || !anchor.isShown || locked()) return@read
+            if (readings.isEmpty()) toast(getString(R.string.remote_not_found))
+            val selected = prefs.getString("rb_device", null)
+            val choices = listOf(null to getString(R.string.remote_device_auto)) + readings.map {
+                it.address to "${it.name} · ${it.address.takeLast(5)} · ${it.level}%"
+            }
+            holdMenu(anchor, choices.map { (address, name) ->
+                "${if (address == selected) "$CHOSEN " else ""}$name" to {
+                    if (address != prefs.getString("rb_device", null)) {
+                        prefs.edit().putString("rb_device", address).remove("rb_level")
+                            .putBoolean("rb_failed", true).remove("rb_alert_day").apply()
+                        updateBatteryIcon()
+                    }
+                    refreshRemoteBattery(force = true)
+                }
+            }, below = true)
+        }
     }
 
     /** Hold menu of the battery icon: the alert goes 20 % -> 15 % -> off -> 20 %. */

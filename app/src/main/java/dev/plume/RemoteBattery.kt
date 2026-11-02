@@ -22,17 +22,16 @@ import android.os.Looper
 import java.util.UUID
 
 /**
- * The battery of the Bluetooth remotes (and other Bluetooth controllers) that are connected, for the top bar. Android
+ * The battery of paired Bluetooth devices, for the top bar. Android
  * has no one call for it, so each device is asked in turn, the cheapest way first:
  *  1. Bluetooth's own level, when the system tracks it for that device (headsets, some gamepads and remotes);
  *  2. the input device's battery state (Android 12 and newer: gamepads, some HID remotes);
- *  3. the remote itself: a Bluetooth LE remote that is a HID device and offers the standard Battery Service.
+ *  3. the device itself, when it offers the standard Bluetooth LE Battery Service.
  * A remote that offers none of these (an infrared remote, a radio remote with a USB dongle, a remote with a battery
  * service of its own making) has no icon level: the icon shows a dash. Home requests a short read five seconds after
  * resuming or waking, or when the icon is selected. Nothing is read without the permission.
  */
 internal object RemoteBattery {
-    private val HID = UUID.fromString("00001812-0000-1000-8000-00805f9b34fb")
     private val BATTERY = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
     private val LEVEL = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
 
@@ -66,7 +65,7 @@ internal object RemoteBattery {
     fun isBusy() = busy
 
     /** One remote and its level. */
-    class Reading(val name: String, val level: Int)
+    class Reading(val name: String, val level: Int, val address: String = "")
 
     /** The lowest level of [readings], which is the one worth a warning; null when there is none. */
     fun lowest(readings: List<Reading>) = readings.minOfOrNull { it.level }
@@ -74,17 +73,19 @@ internal object RemoteBattery {
     /** "Name 69%, Other 40%" for the message shown when the icon is selected. */
     fun describe(readings: List<Reading>) = readings.joinToString(", ") { "${it.name} ${it.level}%" }
 
+    internal fun matchesSelection(address: String, selected: String?) = selected == null || address == selected
+
     /**
-     * Reads every connected remote or controller and calls [done] on the main thread with what could be read (empty when
-     * nothing answered). Devices are tried one after the other; a paired device that is away fails at the timeout.
+     * Reads paired devices, or only [selected], and calls [done] on the main thread with what could be read.
+     * Devices are tried one after the other; a paired device that is away fails at the timeout.
      */
     @SuppressLint("MissingPermission")
-    fun read(c: Context, done: (List<Reading>) -> Unit) {
+    fun read(c: Context, selected: String? = null, done: (List<Reading>) -> Unit) {
         if (busy) return
         if (!allowed(c)) return done(emptyList())
         val adapter = (c.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
         val devices = try {
-            adapter?.bondedDevices.orEmpty().filter { isRemote(it) }
+            adapter?.bondedDevices.orEmpty().filter { matchesSelection(it.address, selected) }
         } catch (e: SecurityException) {
             emptyList()
         }
@@ -100,7 +101,7 @@ internal object RemoteBattery {
             val d = devices[i]
             val name = try { d.name ?: d.address } catch (e: SecurityException) { d.address }
             fun got(level: Int?) {
-                if (level != null) out += Reading(name, level)
+                if (level != null) out += Reading(name, level, d.address)
                 next(i + 1)
             }
             quickLevel(c, d, name)?.let { return got(it) }
@@ -108,12 +109,6 @@ internal object RemoteBattery {
         }
         next(0)
     }
-
-    /** A remote, a keyboard, a gamepad: a Bluetooth input device (headsets and speakers have their own battery display). */
-    @SuppressLint("MissingPermission")
-    private fun isRemote(d: BluetoothDevice) =
-        d.bluetoothClass?.majorDeviceClass == android.bluetooth.BluetoothClass.Device.Major.PERIPHERAL ||
-            (d.bluetoothClass == null && d.type == BluetoothDevice.DEVICE_TYPE_LE)
 
     /** The two answers that need no connection: Bluetooth's level (-1 when it does not know), then the input device's battery. */
     @SuppressLint("MissingPermission")
@@ -135,7 +130,7 @@ internal object RemoteBattery {
         return null
     }
 
-    /** One device: connect, check that it is a HID remote with a Battery Service, read it. [done] gets the level or null. */
+    /** One device: connect and read its Battery Service. [done] gets the level or null. */
     @SuppressLint("MissingPermission")
     private fun readOne(c: Context, d: BluetoothDevice, done: (Int?) -> Unit) {
         val finished = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -160,7 +155,7 @@ internal object RemoteBattery {
 
             override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
                 val level = g.getService(BATTERY)?.getCharacteristic(LEVEL)
-                if (g.getService(HID) == null || level == null || !g.readCharacteristic(level)) end(null)
+                if (level == null || !g.readCharacteristic(level)) end(null)
             }
 
             @Deprecated("Android 12 and older call this one")

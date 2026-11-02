@@ -386,9 +386,11 @@
     <string name="clock_large">Large</string>
     <string name="help_clock_size">How big the clock is on Home.</string>
     <string name="remote_battery">Remote battery</string>
+    <string name="remote_device">Battery device</string>
+    <string name="remote_device_auto">Automatic (lowest battery)</string>
     <string name="remote_battery_value">Remote battery: %1$s</string>
     <string name="remote_reading">Reading the remote…</string>
-    <string name="remote_not_found">No Bluetooth remote answered</string>
+    <string name="remote_not_found">No Bluetooth device returned a battery level</string>
     <string name="remote_low_alert">Low battery alert: %1$s</string>
     <string name="remote_low_value">%1$d%%</string>
     <string name="remote_low_off">off</string>
