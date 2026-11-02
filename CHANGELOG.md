@@ -43,6 +43,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - A video wallpaper shows its own first frame while it starts.
 - With **Large** or **Largest** apps, the apps row no longer covers the Continue watching title.
 - Glass rows no longer show a grey edge after the last tile.
+- Plume starts at cold boot when it is the only Home app. Before, the TV stayed on the boot screen.
 - Continue watching shows the show you watched last first in apps such as Nuvio.
 - On Fire TV, Plume comes back when you press Home on the Plume home screen or in the Plume settings.
 - On Google TV, a notice or a sign-in screen no longer brings Plume to the front.
