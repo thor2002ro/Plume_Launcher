@@ -16,13 +16,15 @@ STOCK = "com.amazon.tv.launcher"
 FIRE = KIND.startswith("fire")
 GOOGLE = KIND in ("google", "xiaomi_google")
 HOME_PKG = STOCK if FIRE else "com.google.android.apps.tv.launcherx" if GOOGLE else "com.mitv.tvhome" if KIND == "xiaomi" else "com.google.android.tvlauncher"
+RECOVERY = "com.google.android.tungsten.setupwraith"
 if os.path.exists(SP):
     st = json.load(open(SP))
 else:
     st = {"enabled": "", "granted": False, "installed": True, "global": "", "files": {}, "disabled": [], "alarm_saved": None,
           "top": HOME_PKG + "/.Home",
           "restricted": "default", "exact": "default", "futurity": "null", "marker": "null",
-          "native": False, "sole": False, "bound_dump": None}
+          "native": False, "sole": False, "bound_dump": None, "package_states": {}, "recovery": GOOGLE,
+          "setup_complete": "1", "provisioned": "1", "fallback": False, "extra_home": None, "role": HOME_PKG}
     st.update(json.loads(os.environ.get("FAKE_INIT", "{}")))
 
 
@@ -32,6 +34,24 @@ def save():
 
 def service_on():
     return SVC in st["enabled"].split(":") and st["installed"]
+
+
+def homes():
+    result = ["dev.plume/.MainActivity"] if st["installed"] else []
+    if not st["sole"]:
+        if HOME_PKG not in st["disabled"]: result.append(HOME_PKG + "/.Home")
+        if st["recovery"] and RECOVERY not in st["disabled"]: result.append(RECOVERY + "/.RecoveryActivity")
+    if st["fallback"]: result.append("com.android.tv.settings/.system.FallbackHome")
+    if st["extra_home"]: result.append(st["extra_home"])
+    return result
+
+
+def resolved():
+    candidates = homes()
+    if GOOGLE:
+        for candidate in (HOME_PKG + "/.Home", RECOVERY + "/.RecoveryActivity"):
+            if candidate in candidates: return candidate
+    return "dev.plume/.MainActivity" if st["native"] or st["sole"] else HOME_PKG + "/.Home"
 
 
 def app_sync():
@@ -75,11 +95,19 @@ elif line.startswith("getprop ro.build.version.sdk"): out = sdk
 elif line == "pm list features": out = "feature:android.software.leanback" + ("\nfeature:amazon.hardware.fire_tv" if FIRE else "")
 elif line == "pm list packages":
     out = "package:com.android.settings" + ("\npackage:dev.plume" if st["installed"] else "") + ("\npackage:" + HOME_PKG if not st["sole"] else "")
+    if st["recovery"] and not st["sole"]: out += "\npackage:" + RECOVERY
 elif line == "am get-current-user": out = "0"
 elif line.startswith("cmd package resolve-activity"):
-    out = "dev.plume/.MainActivity" if st["native"] else HOME_PKG + "/.Home"
+    out = resolved()
 elif line.startswith("cmd package query-activities"):
-    out = "dev.plume/.MainActivity" + ("" if st["sole"] else "\n" + HOME_PKG + "/.Home")
+    out = "\n".join(homes())
+elif line.startswith("cmd package set-home-activity"):
+    st["role"] = "dev.plume"; st["native"] = True; out = "Success"
+elif line.startswith("cmd role get-role-holders"): out = st["role"]
+elif line.startswith("cmd role add-role-holder"):
+    st["role"] = line.split()[-1]; st["native"] = st["role"] == "dev.plume"
+elif line.startswith("cmd role remove-role-holder"):
+    st["role"] = ""; st["native"] = False
 elif line.startswith("appops get"):
     key = "restricted" if "ACCESS_RESTRICTED_SETTINGS" in line else "exact"
     out = line.split()[-1] + ": " + st[key]
@@ -95,6 +123,11 @@ elif line == "settings delete global plume_home_alarm_sdk": st["marker"] = "null
 elif line == "pm list packages -d": out = "\n".join("package:" + p for p in st["disabled"])
 elif line == "dumpsys package dev.plume":
     out = "    versionName=1.6\n" + ("    android.permission.WRITE_SECURE_SETTINGS: granted=true" if st["granted"] else "")
+elif line.startswith("dumpsys package "):
+    pkg = line.split()[-1]
+    out = "    User 0: installed=true enabled=%s instant=false" % st["package_states"].get(pkg, 3 if pkg in st["disabled"] else 0)
+elif line == "settings get secure user_setup_complete": out = st["setup_complete"]
+elif line == "settings get global device_provisioned": out = st["provisioned"]
 elif line == "settings get secure enabled_accessibility_services": out = st["enabled"] or "null"
 elif line == "settings get secure accessibility_enabled": out = "1" if st["enabled"] else "0"
 elif line == "settings get global alarm_manager_constants": out = st["global"] or "null"
@@ -109,13 +142,18 @@ elif line == "dumpsys activity activities": out = "  mResumedActivity: ActivityR
 elif line.startswith("pm grant"): st["granted"] = st["installed"]
 elif line.startswith("pm revoke"): st["granted"] = False
 elif line.startswith("pm disable-user"):
-    if STOCK not in st["disabled"]: st["disabled"].append(STOCK)
-    out = "Package %s new state: disabled-user" % STOCK
-elif line.startswith("pm enable"):
+    pkg = line.split()[-1]
+    if pkg not in st["disabled"]: st["disabled"].append(pkg)
+    st["package_states"][pkg] = 3
+    out = "Package %s new state: disabled-user" % pkg
+elif line.startswith("pm enable") or line.startswith("pm default-state"):
     pkg = line.split()[-1]
     if pkg in st["disabled"]: st["disabled"].remove(pkg)
+    st["package_states"][pkg] = 0 if "default-state" in line else 1
     out = "Package %s new state: enabled" % pkg
-elif line.startswith("am start"): st["top"] = "com.android.settings/.Settings"
+elif line.startswith("am start"):
+    st["top"] = resolved() if "android.intent.category.HOME" in line else "com.android.settings/.Settings"
+    out = "Status: ok\nActivity: " + st["top"]
 elif line == "input keyevent KEYCODE_HOME":
     if (st["native"] or service_on()) and "FAKE_HOME_BROKEN" not in os.environ: st["top"] = "dev.plume/.MainActivity"
     elif HOME_PKG not in st["disabled"]: st["top"] = HOME_PKG + "/.Home"

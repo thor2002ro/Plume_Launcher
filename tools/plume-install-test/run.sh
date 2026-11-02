@@ -264,7 +264,7 @@ check "a step that failed first: the stock launcher stays on" '[ $RC = 1 ] && [ 
 
 new google
 run --disable-stock-launcher
-check "Google TV refuses to turn its launcher off" '[ $RC != 0 ] && has "$OUT" "Fire TV only" && [ -z "$(st enabled)" ]'
+check "Google TV replacement disables stock and recovery without accessibility grants" '[ $RC = 0 ] && has "$(st disabled)" com.google.android.apps.tv.launcherx && has "$(st disabled)" com.google.android.tungsten.setupwraith && [ -z "$(st enabled)" ] && [ "$(st granted)" = False ]'
 
 # ---- the questions the script asks -------------------------------------------------------------------------------
 new fire7 '{"installed": false}'
@@ -274,6 +274,69 @@ check "Plume not installed and no -a: the script stops and changes nothing" '[ $
 new fire7
 OUT=$(printf 'n\n' | sh "$SCRIPT" 10.0.0.2 2>&1); RC=$?
 check "answering n changes nothing" '[ $RC = 0 ] && has "$OUT" "Nothing changed" && [ -z "$(st enabled)" ] && [ "$(st granted)" = False ]'
+
+# Google TV replacement must be reversible without changing pre-existing disabled packages.
+new xiaomi_google '{"fallback": true}'
+run --disable-stock-launcher
+check "Google TV replacement accepts Android fallback Home" '[ $RC = 0 ] && [ "$(st role)" = dev.plume ] && has "$(record)" google_home='
+run --undo
+check "Google TV undo restores packages, original role and default enabled state" '[ $RC = 0 ] && [ "$(st disabled)" = "[]" ] && [ "$(st role)" = com.google.android.apps.tv.launcherx ] && [ "$(st package_states com.google.android.apps.tv.launcherx)" = 0 ] && [ -z "$(record)" ]'
+
+new google '{"package_states": {"com.google.android.apps.tv.launcherx": 1}, "fallback": true}'
+run --disable-stock-launcher
+run --disable-stock-launcher
+run --undo
+check "repeated replacement retains the original explicitly enabled state" '[ $RC = 0 ] && [ "$(st package_states com.google.android.apps.tv.launcherx)" = 1 ]'
+
+new google '{"disabled": ["com.google.android.tungsten.setupwraith"]}'
+run --disable-stock-launcher
+run --undo
+check "undo preserves recovery disabled before installer use" '[ $RC = 0 ] && [ "$(st disabled)" = "['"'"'com.google.android.tungsten.setupwraith'"'"']" ]'
+
+new google '{"setup_complete": "0"}'
+run --disable-stock-launcher
+check "replacement refuses unfinished setup without changing packages" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(record)" ]'
+
+new google
+run -n --disable-stock-launcher
+check "Google TV replacement dry run changes nothing" '[ $RC = 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(record)" ]'
+
+new google
+FAKE_FAIL=google_home=; export FAKE_FAIL
+run --disable-stock-launcher
+check "missing recovery record prevents Google TV package changes" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ]'
+
+new google
+FAKE_FAIL_SILENT='pm disable-user --user 0 com.google.android.apps.tv.launcherx'; export FAKE_FAIL_SILENT
+run --disable-stock-launcher
+check "stock disable failure restores recovery and retains the old Home role" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ] && [ "$(st role)" = com.google.android.apps.tv.launcherx ] && [ -z "$(record)" ]'
+
+new google
+FAKE_FAIL_SILENT='cmd package set-home-activity'; export FAKE_FAIL_SILENT
+run --disable-stock-launcher
+check "Home assignment failure restores both packages" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(record)" ]'
+
+new google '{"extra_home": "com.other/.Home"}'
+run --disable-stock-launcher
+check "an unexpected remaining launcher aborts and rolls back" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(record)" ]'
+
+new google '{"fallback": true}'
+FAKE_HOME_BROKEN=1; export FAKE_HOME_BROKEN
+run --disable-stock-launcher
+check "failed Home key test rolls back Google TV replacement" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(record)" ]'
+
+new google
+run --disable-stock-launcher
+FAKE_FAIL_SILENT='pm default-state'; export FAKE_FAIL_SILENT
+run --undo
+check "failed Google TV restore keeps its recovery record" '[ $RC != 0 ] && has "$(record)" google_home= && has "$(record)" google_pkg='
+unset FAKE_FAIL_SILENT
+run --undo
+check "Google TV undo can retry after a refused package restore" '[ $RC = 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(record)" ]'
+
+new google '{"native": true, "sole": true, "fallback": true}'
+run
+check "existing sole Plume plus Android fallback needs no new grant" '[ $RC = 0 ] && [ -z "$(st enabled)" ] && [ "$(st granted)" = False ]'
 
 echo "$N checks, $BAD failed"
 [ $BAD = 0 ]

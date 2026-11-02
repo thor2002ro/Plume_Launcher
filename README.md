@@ -143,6 +143,10 @@ On Fire TV with Android 9–11, Plume manages the alarm timing while its service
 
 Before each change, the script writes and verifies a recovery record on the TV (`/data/local/tmp/plume-install.state`). `./plume-install.sh --undo` restores its recorded app-ops, alarm configuration and marker, disables the service only if this script enabled it, and revokes only its own grant. A service that was on already stays on. Values changed by someone else are left alone. If a check fails, the recovery record stays for another attempt. Undo restores stock Home first and refuses to remove an unverified sole-launcher route. It never uninstalls or disables Plume.
 
+The script keeps the TV's own launcher enabled unless you add `--disable-stock-launcher`. On Fire TV, it turns the launcher off after saving a recovery record and checking Plume's service. It then opens Settings and presses Home. If Home does not open Plume, it restores the launcher.
+
+On Google TV, the same option requires completed Android setup and an installed Plume. It records the previous Home role and package states, disables Google TV and its setup/recovery Home package for user 0, and sets Plume as native Home. It verifies the Home resolver and Home button, allowing Android's system fallback Home. If a check fails, it rolls back. `--undo` restores the recorded package states and Home role; packages disabled before installation stay disabled. Without this option, Google TV keeps its launcher and uses Plume's Home button service.
+
 Tests run against a fake `adb`, no TV needed: `sh tools/plume-install-test/run.sh`.
 </details>
 

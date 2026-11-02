@@ -10,7 +10,7 @@
 #   -a APK                  install this Plume APK first (adb install -r)
 #   -n                      only show what was found and what would change
 #   -y                      do not ask before changing
-#   --disable-stock-launcher  also turn off the TV's own launcher (Fire TV only). Off unless you ask for it.
+#   --disable-stock-launcher  replace stock Home on Fire TV or a provisioned Google TV. Off unless requested.
 #   --undo                  put back what this script changed, and only that: it turns the stock launcher on again
 #                           (if this script turned it off), turns the Home button service off (if this script
 #                           turned it on) and waits until Plume has put its alarm setting back, and takes back the
@@ -30,7 +30,8 @@
 #                  off, checks that Plume's service runs and that Home opens Plume, and turns the launcher on
 #                  again if either check fails.
 #   Google TV      Plume's service takes the Home button before Google TV sees it. Nothing else is needed.
-#                  The script never turns off Google TV's launcher: that can stop the TV from starting.
+#                  With --disable-stock-launcher, also disable the setup/recovery Home package, assign Plume as
+#                  native Home, and verify it. Save package states and the previous Home role for undo/rollback.
 #
 # On the TV: turn ADB debugging on. Fire TV: Settings > My Fire TV > Developer options > ADB debugging
 # (if Developer options is missing: Settings > My Fire TV > About, then click the device name 7 times).
@@ -43,6 +44,8 @@ SERVICE=$PKG/$PKG.HomeOverride
 GRANT=android.permission.WRITE_SECURE_SETTINGS
 STATE=/data/local/tmp/plume-install.state
 FIRE_LAUNCHER=com.amazon.tv.launcher
+GOOGLE_LAUNCHER=com.google.android.apps.tv.launcherx
+GOOGLE_RECOVERY=com.google.android.tungsten.setupwraith
 
 APK= DRYRUN=0 YES=0 UNDO=0 STOCK=0 ADDR=
 while [ $# -gt 0 ]; do
@@ -149,9 +152,48 @@ routes() {
   printf '%s\n' "$RESOLVED" | grep -q '^dev.plume/' && NATIVE=1
   HOMES=$(tv cmd package query-activities --brief --components --user "$USER_ID" -a android.intent.action.MAIN -c android.intent.category.HOME | grep -E '^[[:alnum:]_.]+/[[:alnum:]_.$]+$')
   SOLE=0
-  [ -n "$HOMES" ] && ! printf '%s\n' "$HOMES" | grep -qv '^dev.plume/' && SOLE=1
+  REAL_HOMES=$(printf '%s\n' "$HOMES" | grep -vE '^com.android.tv.settings/(\.system\.FallbackHome|com\.android\.tv\.settings\.system\.FallbackHome)$')
+  printf '%s\n' "$REAL_HOMES" | grep -q '^dev.plume/' && ! printf '%s\n' "$REAL_HOMES" | grep -qv '^dev.plume/' && SOLE=1
 }
 routes
+
+package_state() { tv dumpsys package "$1" | sed -n '/^ *User 0:/s/.* enabled=\([0-4]\) .*/\1/p' | head -1; }
+home_role() {
+  tvok cmd role get-role-holders --user 0 android.app.role.HOME || return 1
+  case $TVOUT in '') printf '%s\n' none ;; *[!a-zA-Z0-9_.]*) return 1 ;; *) printf '%s\n' "$TVOUT" ;; esac
+}
+
+# Restore stock Home before its recovery activity, and keep failed recovery records for another attempt.
+restore_google() {
+  STATEDATA=$(tv cat $STATE)
+  for GP in "$GOOGLE_LAUNCHER" "$GOOGLE_RECOVERY"; do
+    GS=$(printf '%s\n' "$STATEDATA" | sed -n "s/^google_pkg=$GP://p" | head -1)
+    [ -n "$GS" ] || continue
+    case $GS in 0) GC=default-state ;; 1) GC=enable ;; *) bad "invalid Google TV recovery state"; continue ;; esac
+    if [ "$(package_state "$GP")" = "$GS" ] || { tvok pm "$GC" --user 0 "$GP" && [ "$(package_state "$GP")" = "$GS" ]; }; then
+      unrecord "google_pkg=$GP:$GS" || bad "could not update the recovery record"
+    else bad "could not restore $GP; retry --undo (or run: adb shell pm $GC --user 0 $GP)"; fi
+  done
+  GH=$(printf '%s\n' "$STATEDATA" | sed -n 's/^google_home=//p' | head -1)
+  [ -n "$GH" ] && [ $FAILED = 0 ] || return
+  case $GH in *[!a-zA-Z0-9_.]*) bad "invalid previous Home role"; return ;; esac
+  if [ "$(home_role)" != "$GH" ]; then
+    if [ "$GH" = none ]; then tvok cmd role remove-role-holder --user 0 android.app.role.HOME "$PKG"
+    else tvok cmd role add-role-holder --user 0 android.app.role.HOME "$GH"; fi
+  fi
+  if [ "$(home_role)" = "$GH" ]; then unrecord "google_home=$GH" || bad "could not update Home recovery record"
+  else bad "could not restore the previous Home role; recovery record kept"; fi
+}
+
+resumed() { tv dumpsys activity activities | grep ResumedActivity; }
+home_opens_plume() {
+  tv am start -a android.settings.SETTINGS >/dev/null
+  n=0; while resumed | grep -q "$PKG/" && [ $n -lt 5 ]; do sleep 1; n=$((n + 1)); done
+  resumed | grep -q "$PKG/" && return 1
+  tv input keyevent KEYCODE_HOME >/dev/null
+  n=0; while [ $n -lt 12 ]; do sleep 1; resumed | grep -q "$PKG/" && return 0; n=$((n + 1)); done
+  return 1
+}
 
 appmode() {
   tvr appops get --user "$USER_ID" "$PKG" "$1"
@@ -199,6 +241,7 @@ if [ $UNDO = 1 ]; then
     exit 0
   fi
   say "This will:"
+  printf '%s\n' "$STATEDATA" | grep -q '^google_' && say "  - restore recorded Google TV package states and the previous Home role"
   [ -n "$U_STOCK" ] && say "  - turn the stock launcher on again ($U_STOCK; this script turned it off)"
   [ $U_SERVICE = 1 ] && say "  - turn off Plume's Home button service (this script turned it on; Plume then puts its alarm setting back)"
   [ $U_GRANT = 1 ] && say "  - take back the $GRANT grant (this script gave it)"
@@ -210,6 +253,8 @@ if [ $UNDO = 1 ]; then
     printf 'Go on? [y/N] '; read ans; case $ans in y|Y|yes) ;; *) say "Nothing changed."; exit 0 ;; esac
   fi
   say "Undoing:"
+  restore_google
+  [ $FAILED = 0 ] || die "Google TV Home could not be restored; leaving Plume and the recovery record intact"
   # The launcher comes back first: with the service off and the launcher off, Home would go nowhere.
   if [ -n "$U_STOCK" ]; then
     [ "$U_STOCK" = "$FIRE_LAUNCHER" ] || die "unexpected launcher in recovery record"
@@ -279,8 +324,59 @@ if [ $UNDO = 1 ]; then
 fi
 
 # ---- Install: the plan ------------------------------------------------------------------------------------------
+if [ $STOCK = 1 ] && [ "$KIND" = google ]; then
+  [ $INSTALLED = 1 ] || die "install Plume before replacing Google TV Home"
+  printf '%s\n' "$HOMES" | grep -q '^dev.plume/' || die "cannot verify Plume as an enabled Home candidate"
+  [ "$SDK" -ge 29 ] && [ "$(tv settings get secure user_setup_complete)" = 1 ] &&
+    [ "$(tv settings get global device_provisioned)" = 1 ] || die "cannot replace Google TV Home before Android setup is complete"
+  if [ $NATIVE = 1 ] && [ $SOLE = 1 ]; then
+    [ -z "$APK" ] || [ $DRYRUN = 1 ] || adb -s "$D" install -r "$APK" || die "APK installation failed"
+    say "Plume already resolves Home without another launcher. Existing recovery records are preserved."
+    exit 0
+  fi
+  printf '%s\n' "$STATEDATA" | grep -q '^google_' && die "unfinished Google TV replacement: run --undo before retrying"
+  GH=$(home_role) || die "cannot read the current Home role; nothing changed"
+  GOOGLE_STATES=
+  for GP in "$GOOGLE_RECOVERY" "$GOOGLE_LAUNCHER"; do
+    printf '%s\n' "$PACKAGES" | grep -qx "package:$GP" || continue
+    GS=$(package_state "$GP")
+    case $GS in
+      0|1) GOOGLE_STATES="$GOOGLE_STATES $GP:$GS" ;;
+      2|3|4) disabled "$GP" || die "cannot verify the disabled state of $GP" ;;
+      *) die "cannot read enabled state of $GP; nothing changed" ;;
+    esac
+  done
+  say "This will replace Google TV Home with Plume for user 0:"
+  say "  - save package states and the current Home role, then disable Google TV and its setup/recovery Home package"
+  say "  - set Plume as native Home; open Settings and press Home to verify it"
+  say "  - roll back if verification fails; --undo restores only this script's changes"
+  [ $DRYRUN = 0 ] || exit 0
+  if [ $YES = 0 ]; then
+    printf 'Go on? [y/N] '; read ans; case $ans in y|Y|yes) ;; *) say "Nothing changed."; exit 0 ;; esac
+  fi
+  [ -z "$APK" ] || adb -s "$D" install -r "$APK" || die "APK installation failed"
+  record "google_home=$GH" || die "could not write the Home recovery record; no packages disabled"
+  for GE in $GOOGLE_STATES; do
+    record "google_pkg=$GE" || { restore_google; die "could not write the package recovery record; no packages disabled"; }
+  done
+  trap 'restore_google; exit 1' HUP INT TERM
+  for GE in $GOOGLE_STATES; do
+    GP=${GE%:*}
+    if ! { tvok pm disable-user --user 0 "$GP" && disabled "$GP"; }; then bad "could not disable $GP"; break; fi
+  done
+  if [ $FAILED = 0 ]; then
+    tvok cmd package set-home-activity --user 0 "$PKG/.MainActivity" || bad "could not assign Plume as Home"
+    routes
+    if [ $NATIVE != 1 ] || [ $SOLE != 1 ]; then bad "Plume is not the sole native Home (Android fallback Home is allowed)"
+    elif ! home_opens_plume; then bad "Home does not open Plume"; fi
+  fi
+  trap - HUP INT TERM
+  if [ $FAILED != 0 ]; then FAILED=0; restore_google; die "Google TV replacement failed; rollback attempted (see above)"; fi
+  ok "Plume is native Home; Google TV replacement verified. Undo with: ./plume-install.sh --undo"
+  exit 0
+fi
 if [ $STOCK = 1 ]; then
-  [ "$KIND" = fire ] || die "--disable-stock-launcher is for a Fire TV only. On $KINDNAME the stock launcher must stay on: turning it off can stop the TV from starting."
+  [ "$KIND" = fire ] || die "--disable-stock-launcher supports Fire TV and Google TV only"
   printf '%s\n' "$PACKAGES" | grep -qx "package:$FIRE_LAUNCHER" || die "stock launcher is absent; nothing to disable"
   disabled "$FIRE_LAUNCHER" && die "stock launcher is already disabled; leaving its existing state unchanged"
   printf '%s\n' "$HOMES" | grep -q '^dev.plume/' || die "cannot verify Plume as an enabled Home candidate; stock launcher stays on"
@@ -377,15 +473,6 @@ if [ "$KIND" = fire ] && [ "$SDK" -le 30 ]; then
 fi
 
 # The stock launcher goes last, and only when Plume's service runs: with the launcher off and no service, Home goes nowhere.
-resumed() { tv dumpsys activity activities | grep ResumedActivity; }
-home_opens_plume() {
-  tv am start -a android.settings.SETTINGS >/dev/null
-  n=0; while resumed | grep -q "$PKG/" && [ $n -lt 5 ]; do sleep 1; n=$((n + 1)); done
-  resumed | grep -q "$PKG/" && return 1 # Plume is still in front: Settings did not open, so the test would prove nothing
-  tv input keyevent KEYCODE_HOME >/dev/null
-  n=0; while [ $n -lt 12 ]; do sleep 1; resumed | grep -q "$PKG/" && return 0; n=$((n + 1)); done
-  return 1
-}
 restore_launcher() {
   if tvok pm enable $FIRE_LAUNCHER && ! disabled $FIRE_LAUNCHER; then ok "Fire TV launcher on again"; unrecord "stock=$FIRE_LAUNCHER"
   else bad "could not turn $FIRE_LAUNCHER on again. Run: adb shell pm enable $FIRE_LAUNCHER"; fi
