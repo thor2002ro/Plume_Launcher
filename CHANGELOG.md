@@ -31,6 +31,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **Rows of the shows row.** Select **Plume settings → Shows row → Rows**, then select **Mixed** (the default), **By title** or **Per channel**. The page says what each choice does and which buttons to press. By title and Per channel show one source at a time: Watch Next, or one channel that an app adds. The cards stay in place and change their picture, title and progress.
 - **Edit the top bar.** Hold **OK** on an icon at the top of the home screen. Select **Move**, **Hide** or **Add icon**. **Plume settings** stays on the bar.
 - **Power menu icon.** Hold **OK** on a top-bar icon and select **Add icon**, then **Power menu**. The icon opens the Android power menu.
+- **Remote battery.** The top bar always shows your Bluetooth remote's battery, with a daily alert at 20% or less. Hold **OK** on its icon to change the alert.
 - **More apps.** Plume shows installed apps that do not have a TV launcher entry. Some apps need touch or a mouse.
 - **Italian.** Plume is now available in Italian.
 - **The selected tile rises.** The selected tile or card moves up out of its row, so you can find it from across the room.

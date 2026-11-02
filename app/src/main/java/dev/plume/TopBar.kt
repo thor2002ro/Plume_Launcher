@@ -6,9 +6,9 @@ package dev.plume
  */
 internal object TopBar {
     /** The saved list ("wifi,apps,plume") without unknown or repeated keys, or [default]. [required] is always on the bar. */
-    fun parse(saved: String?, known: List<String>, default: List<String>, required: String): List<String> {
+    fun parse(saved: String?, known: List<String>, default: List<String>, vararg required: String): List<String> {
         val order = saved?.split(',')?.filter { it in known }?.distinct() ?: default
-        return if (required in order) order else order + required
+        return order + required.filter { it !in order }
     }
 
     /** [key] one place to [dir] (-1 or 1) among the icons that [shown]; the others keep their places in [order]. */
