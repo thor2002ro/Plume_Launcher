@@ -19,11 +19,11 @@ class TopBarTest {
         assertEquals(listOf("plume"), TopBar.parse("", known, known, "plume")) // the bar is never empty
     }
 
-    @Test fun batteryStaysVisibleInNewAndSavedLayouts() {
+    @Test fun batteryIsEnabledByDefaultButASavedLayoutCanHideIt() {
         val all = known + listOf("power", "battery")
-        assertEquals(known + "battery", TopBar.parse(null, all, all - "power", "plume", "battery"))
-        assertEquals(listOf("wifi", "plume", "battery"), TopBar.parse("wifi", all, all - "power", "plume", "battery"))
-        assertEquals(listOf("battery", "plume"), TopBar.parse("battery,plume", all, all - "power", "plume", "battery"))
+        assertEquals(known + "battery", TopBar.parse(null, all, all - "power", "plume"))
+        assertEquals(listOf("wifi", "plume"), TopBar.parse("wifi", all, all - "power", "plume"))
+        assertEquals(listOf("battery", "plume"), TopBar.parse("battery,plume", all, all - "power", "plume"))
     }
 
     @Test fun anIconSlidesPastTheOnesOnScreen() {

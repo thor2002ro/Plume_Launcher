@@ -31,7 +31,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **Rows of the shows row.** Select **Plume settings → Shows row → Rows**, then select **Mixed** (the default), **By title** or **Per channel**. The page says what each choice does and which buttons to press. By title and Per channel show one source at a time: Watch Next, or one channel that an app adds. The cards stay in place and change their picture, title and progress.
 - **Edit the top bar.** Hold **OK** on an icon at the top of the home screen. Select **Move**, **Hide** or **Add icon**. **Plume settings** stays on the bar.
 - **Power menu icon.** Hold **OK** on a top-bar icon and select **Add icon**, then **Power menu**. The icon opens the Android power menu.
-- **Remote battery.** The top bar always shows your Bluetooth remote's battery, with a daily alert at 20% or less. Hold **OK** on its icon to change the alert.
+- **Remote battery.** The top bar shows your Bluetooth remote's battery by default. Hold **OK** on its icon to hide it or change the alert; use **Add icon → Remote battery** to restore it.
 - **More apps.** Plume shows installed apps that do not have a TV launcher entry. Some apps need touch or a mouse.
 - Remote battery shows a red dash when a read fails and a red percentage at 20% or below. Readings no longer expire after 30 minutes.
 - Remote battery refreshes five seconds after Home opens or the TV wakes, instead of polling periodically. Select the icon to refresh immediately.

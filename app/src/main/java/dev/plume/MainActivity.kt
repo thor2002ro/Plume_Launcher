@@ -4218,11 +4218,11 @@ class MainActivity : Activity() {
     private var topLive: List<Int> = emptyList() // the order while moving; saved when OK places the icon
     private var topBefore: List<Int> = emptyList() // the order when the move started, for Back
 
-    /** The saved icon order, with Plume settings and the remote battery always present. */
+    /** The saved icon order; the battery is on by default and only Plume settings must stay visible. */
     private fun topOrder(): List<Int> {
         val all = TOP_KEYS.values.toList()
         // Power and restart are not on the bar until someone adds them.
-        return keys(TopBar.parse(prefs.getString("top_bar", null), all, all - "power" - "restart", "plume", "battery"))
+        return keys(TopBar.parse(prefs.getString("top_bar", null), all, all - "power" - "restart", "plume"))
     }
 
     /** What is really on screen: Sources stays out while the TV has no input. */
@@ -4280,13 +4280,13 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Hold OK on a top-bar icon: Move, Hide (except settings and battery) and Add icon. */
+    /** Hold OK on a top-bar icon: Move, Hide (except settings) and Add icon. */
     private fun topMenu(v: View) {
         if (locked()) return holdMenu(v, listOf(getString(R.string.unlock_to_edit) to { unlock { v.requestFocus(); topMenu(v) } }), below = true)
         val hidden = TOP_KEYS.keys - topOrder().toSet()
         holdMenu(v, listOfNotNull(
             getString(R.string.move) to { startTopMove(v) },
-            if (v.id == R.id.launcherSettings || v.id == R.id.batteryButton) null else getString(R.string.hide) to { hideTop(v) },
+            if (v.id == R.id.launcherSettings) null else getString(R.string.hide) to { hideTop(v) },
             if (hidden.isEmpty()) null else getString(R.string.add_icon) to { addIconMenu(v) },
             if (v.id != R.id.batteryButton) null else getString(R.string.remote_low_alert, lowName(lowAt())) to { cycleLowAlert() },
         ), below = true)
