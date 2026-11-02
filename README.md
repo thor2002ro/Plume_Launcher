@@ -119,7 +119,7 @@ The same grant also lets Plume set the Gallery screensaver and turn its Home ser
 
 Fire OS never gives the Home key to apps. The Home button service watches for Amazon's home and covers it with Plume. Limits:
 
-- **On Fire OS 7, Plume shows about 5 seconds after Home.** Android holds back app starts for 5 seconds after Home. See [#153](../../issues/153).
+- **Home can take about five seconds** when the fast alarm capability is unavailable. Run the installer to check it. Plume uses a noninteractive black accessibility cover before starting Home and removes it after Home draws or after 1.5 seconds. Firmware can still refuse or delay the launch; this does not guarantee instant Home on every Fire TV. See [#153](../../issues/153).
 - **Amazon's Network status screen opens with no highlighted button** while the service is on. Press Down until **Advanced** is highlighted, or turn the service off for a moment.
 - **Remote keys can't be set.** Fire OS doesn't pass the keys to Plume.
 
@@ -137,7 +137,11 @@ Turn on adb debugging on the TV, then from a computer on the same network:
 ./plume-install.sh 192.168.1.20      # add -a plume.apk to install Plume first; -n shows the plan only
 ```
 
-The script detects the TV (Fire OS version, Google TV or Android TV), shows what it will change and asks first. It grants `WRITE_SECURE_SETTINGS`, turns on the Home button service and checks each change on the TV. It writes each change to a recovery record (`/data/local/tmp/plume-install.state`) before it makes it. `./plume-install.sh --undo` reverts only what the script changed; it does not uninstall Plume.
+The script checks the actual Home resolver first. If Home already resolves to Plume, including when Plume is the only enabled launcher, it leaves accessibility and grants alone. Otherwise it identifies the TV, shows its changes, and asks before proceeding. It grants `WRITE_SECURE_SETTINGS`, allows Plume's restricted settings on Android 13+, switches on the Home service, and verifies that the service is bound for the TV owner. The script supports user 0 and refuses other active users. `-n` only shows the plan.
+
+On Fire TV with Android 9–11, Plume manages the alarm timing while its service runs. On Android 12+, the installer verifies exact-alarm access and DeviceConfig `alarm_manager/min_futurity=0`, then writes a marker for that Android version. The app uses the fast alarm path only while that marker matches and exact-alarm access is available. If Android is upgraded or those settings change, rerun the installer. Without the capability, Plume falls back to an ordinary Home start, which can take about five seconds.
+
+Before each change, the script writes and verifies a recovery record on the TV (`/data/local/tmp/plume-install.state`). `./plume-install.sh --undo` restores its recorded app-ops, alarm configuration and marker, disables the service only if this script enabled it, and revokes only its own grant. A service that was on already stays on. Values changed by someone else are left alone. If a check fails, the recovery record stays for another attempt. Undo restores stock Home first and refuses to remove an unverified sole-launcher route. It never uninstalls or disables Plume.
 
 Tests run against a fake `adb`, no TV needed: `sh tools/plume-install-test/run.sh`.
 </details>
@@ -183,6 +187,8 @@ Tests run against a fake `adb`, no TV needed: `sh tools/plume-install-test/run.s
 The sources are Android TV's Watch Next and every channel that is on in **Plume settings → Shows row → Channels**. In **By title** and **Per channel**, Watch Next comes first, then the channels named "Continue Watching", then the others. A source with nothing in it is left out. The cards stay where they are when the source changes: only their poster, title and progress change. Plume loads the new posters first, so a card never shows an empty picture. With only one source that has shows, By title and Per channel look like Mixed, and the Rows page says so.
 
 ### Remote keys
+
+**Home & remote → Open another launcher** opens an enabled alternative Home app without Plume immediately covering it. The pause ends when you open another app. This option is absent when Plume is the only Home candidate. Turning off **Home button service** leaves native Home intact; use the default launcher setting to change native Home. A service disconnected by Android does not overwrite your saved On/Off choice. If Android removes it from the enabled list during a disconnect, enable it again from Plume rather than repeatedly fighting the system's accessibility switch.
 
 Remote keys can open an app or input, send a media key, or open Back, Recent apps, Notifications, Quick settings, the Power menu or Android settings. Back, OK, the arrows, Home, Power and volume can't be changed, so you can't lock yourself out. The PIN lock keeps the layout safe; it is not parental control.
 

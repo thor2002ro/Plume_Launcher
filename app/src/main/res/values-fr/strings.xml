@@ -82,6 +82,7 @@
     <string name="test_screensaver">Tester l\'écran de veille</string>
     <string name="screensaver_timing">Délai de l\'écran de veille</string>
     <string name="home_button">Bouton Accueil</string>
+    <string name="open_tv_home">Ouvrir un autre lanceur</string>
     <string name="default_launcher">Lanceur par défaut</string>
     <string name="plume_press_change">Plume : appuyez pour changer</string>
     <string name="press_to_set">Appuyez pour définir</string>

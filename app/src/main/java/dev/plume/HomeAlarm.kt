@@ -1,6 +1,7 @@
 package dev.plume
 
 import android.app.AlarmManager
+import android.app.ActivityOptions
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -13,7 +14,7 @@ import android.provider.Settings
  * Android holds back an activity start from an app for 5 seconds after Home, so on a Fire TV Plume shows 5 s late.
  * A start that the system sends is not held back: an alarm's PendingIntent is. But the alarm service never fires
  * an alarm sooner than `min_futurity` (5 s by default), so while the Home button is on we set it to 0 and
- * put the old value back when the button goes off. Android 12 and later keep it where only adb can write.
+ * put the old value back when the button goes off. Android 12+ uses installer-verified DeviceConfig and special access.
  */
 object HomeAlarm {
     private const val SETTING = "alarm_manager_constants"
@@ -23,6 +24,14 @@ object HomeAlarm {
 
     /** Fire OS 7 (Android 9) and 8 (Android 11), where the app can write the setting with the Home button's grant. */
     private fun possible(c: Context) = HomeOverride.fireTv(c) && Build.VERSION.SDK_INT <= Build.VERSION_CODES.R
+
+    private fun configured(c: Context): Boolean {
+        if (!HomeOverride.fireTv(c)) return false
+        if (Build.VERSION.SDK_INT <= 30) return value(Settings.Global.getString(c.contentResolver, SETTING), KEY) == "0"
+        // The shell can verify DeviceConfig; ordinary apps cannot read that protected namespace.
+        return Settings.Global.getInt(c.contentResolver, "plume_home_alarm_sdk", 0) == Build.VERSION.SDK_INT &&
+            c.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+    }
 
     /** Home button on: no wait for the alarm. A value that is 0 already (adb, another app) stays as it is. */
     fun engage(c: Context) {
@@ -45,14 +54,28 @@ object HomeAlarm {
     /** False: no alarm, and the caller starts the activity itself as before. Exact alarms need no permission before Android 12. */
     @Suppress("MissingPermission")
     fun start(c: Context, intent: Intent): Boolean {
-        if (!possible(c) || value(Settings.Global.getString(c.contentResolver, SETTING), KEY) != "0") return false
+        if (!configured(c)) return false
         return try {
-            val send = PendingIntent.getActivity(c, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val send = pending(c, intent)
             c.getSystemService(AlarmManager::class.java).setExact(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime(), send)
             true
         } catch (_: RuntimeException) {
             false
         }
+    }
+
+    fun cancel(c: Context) {
+        val intent = Intent(c, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val send = PendingIntent.getActivity(c, 0, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) ?: return
+        c.getSystemService(AlarmManager::class.java).cancel(send)
+        send.cancel()
+    }
+
+    private fun pending(c: Context, intent: Intent): PendingIntent {
+        val options = if (Build.VERSION.SDK_INT >= 35) ActivityOptions.makeBasic().apply {
+            setPendingIntentCreatorBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+        }.toBundle() else null
+        return PendingIntent.getActivity(c, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE, options)
     }
 
     private fun write(c: Context, constants: String?) = try {

@@ -18,7 +18,9 @@ if os.path.exists(SP):
     st = json.load(open(SP))
 else:
     st = {"enabled": "", "granted": False, "installed": True, "global": "", "files": {}, "disabled": [], "alarm_saved": None,
-          "top": (STOCK if FIRE else "com.google.android.apps.tv.launcherx") + "/.Home"}
+          "top": (STOCK if FIRE else "com.google.android.apps.tv.launcherx") + "/.Home",
+          "restricted": "default", "exact": "default", "futurity": "null", "marker": "null",
+          "native": False, "sole": False, "bound_dump": None}
     st.update(json.loads(os.environ.get("FAKE_INIT", "{}")))
 
 
@@ -32,7 +34,7 @@ def service_on():
 
 def app_sync():
     # What Plume does: set min_futurity when its service runs and the grant is there, put the old value back when it stops.
-    if FIRE and "FAKE_NOALARM" not in os.environ:
+    if KIND in ("fire7", "fire8") and "FAKE_NOALARM" not in os.environ:
         if service_on() and st["granted"] and "min_futurity=0" not in st["global"]:
             st["alarm_saved"] = st["global"]
             st["global"] = ",".join([x for x in st["global"].split(",") if x and not x.startswith("min_futurity=")] + ["min_futurity=0"])
@@ -70,7 +72,24 @@ elif line.startswith("getprop ro.build.version.release"): out = rel
 elif line.startswith("getprop ro.build.version.sdk"): out = sdk
 elif line == "pm list features": out = "feature:android.software.leanback" + ("\nfeature:amazon.hardware.fire_tv" if FIRE else "")
 elif line == "pm list packages":
-    out = "package:com.android.settings" + ("\npackage:dev.plume" if st["installed"] else "") + ("\npackage:com.google.android.apps.tv.launcherx" if KIND == "google" else "")
+    out = "package:com.android.settings" + ("\npackage:dev.plume" if st["installed"] else "") + ("\npackage:com.google.android.apps.tv.launcherx" if KIND == "google" else "") + ("\npackage:" + STOCK if FIRE and not st["sole"] else "")
+elif line == "am get-current-user": out = "0"
+elif line.startswith("cmd package resolve-activity"):
+    out = "dev.plume/.MainActivity" if st["native"] else (STOCK if FIRE else "launcherx") + "/.Home"
+elif line.startswith("cmd package query-activities"):
+    out = "dev.plume/.MainActivity" + ("" if st["sole"] else "\n" + (STOCK if FIRE else "launcherx") + "/.Home")
+elif line.startswith("appops get"):
+    key = "restricted" if "ACCESS_RESTRICTED_SETTINGS" in line else "exact"
+    out = line.split()[-1] + ": " + st[key]
+elif line.startswith("appops set"):
+    key = "restricted" if "ACCESS_RESTRICTED_SETTINGS" in line else "exact"
+    st[key] = line.split()[-1]
+elif line == "device_config get alarm_manager min_futurity": out = st["futurity"]
+elif line.startswith("device_config put alarm_manager min_futurity"): st["futurity"] = line.split()[-1]
+elif line == "device_config delete alarm_manager min_futurity": st["futurity"] = "null"
+elif line == "settings get global plume_home_alarm_sdk": out = st["marker"]
+elif line.startswith("settings put global plume_home_alarm_sdk"): st["marker"] = line.split()[-1]
+elif line == "settings delete global plume_home_alarm_sdk": st["marker"] = "null"
 elif line == "pm list packages -d": out = "\n".join("package:" + p for p in st["disabled"])
 elif line == "dumpsys package dev.plume":
     out = "    versionName=1.6\n" + ("    android.permission.WRITE_SECURE_SETTINGS: granted=true" if st["granted"] else "")
@@ -83,7 +102,7 @@ elif line.startswith("settings delete secure enabled_accessibility_services"): s
 elif line.startswith("settings put secure accessibility_enabled"): pass
 elif line == "dumpsys accessibility":
     pre = "Bound services:{" if KIND != "fire7" else "services:{"
-    out = "  " + pre + ("Service[label=Plume: Home button,feedbackType[]]}" if service_on() else "}")
+    out = st["bound_dump"] if st["bound_dump"] is not None else "User state[attributes:{id=0, currentUser=true}\n  " + pre + ("\nService[id=dev.plume/.HomeOverride,label=Plume: Home button,feedbackType[]]\n}" if service_on() else "}")
 elif line == "dumpsys activity activities": out = "  mResumedActivity: ActivityRecord{1 u0 %s t1}" % st["top"]
 elif line.startswith("pm grant"): st["granted"] = st["installed"]
 elif line.startswith("pm revoke"): st["granted"] = False
@@ -96,7 +115,7 @@ elif line.startswith("pm enable"):
     out = "Package %s new state: enabled" % pkg
 elif line.startswith("am start"): st["top"] = "com.android.settings/.Settings"
 elif line == "input keyevent KEYCODE_HOME":
-    if service_on() and "FAKE_HOME_BROKEN" not in os.environ: st["top"] = "dev.plume/.MainActivity"
+    if (st["native"] or service_on()) and "FAKE_HOME_BROKEN" not in os.environ: st["top"] = "dev.plume/.MainActivity"
     elif STOCK not in st["disabled"]: st["top"] = (STOCK if FIRE else "launcherx") + "/.Home"
 elif line.startswith("cat "): out = st["files"].get(line.split()[1], "cat: %s: No such file or directory" % line.split()[1])
 elif line.startswith("rm -f "): st["files"].pop(line.split()[2], None)

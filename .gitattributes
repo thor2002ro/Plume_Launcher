@@ -1,5 +1,7 @@
 * text=auto
 gradlew text eol=lf
+*.sh text eol=lf
+tools/plume-install-test/adb text eol=lf
 *.bat text eol=crlf
 *.jar binary
 *.jpg binary

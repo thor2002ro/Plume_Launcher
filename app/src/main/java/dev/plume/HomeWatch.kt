@@ -21,11 +21,24 @@ class HomeWatch(private val fire: Boolean, private val googleHomes: () -> Set<St
     private var settingsMayFollow = false
     private var lastJump = -JUMP_GAP_MS
     private var waitingPkg: String? = null
+    private var lastHome = false
+    private var paused = false
+
+    fun pause() { paused = true; waitingPkg = null }
+    fun resume() { paused = false }
+
+    fun wake() = fire && lastHome && !paused
 
     /**
      * [KEEP]: leave any jump still waiting. Null: drop it. Otherwise: go home after this many ms.
      */
     fun opened(pkg: String, cls: String?, now: Long): Long? {
+        if (pkg == "android" || pkg == "com.android.systemui") return KEEP
+        lastHome = isHome(pkg, cls)
+        if (paused) {
+            if (lastHome || pkg == PLUME || pkg.startsWith(AMAZON_SETTINGS)) return null
+            paused = false
+        }
         // System UI events do not show that the user left Home; a different launcher screen does.
         if (waitingPkg != null && ((pkg == waitingPkg && isHome(pkg, cls)) ||
                 pkg == PLUME || pkg == "android" || pkg == "com.android.systemui")) return KEEP

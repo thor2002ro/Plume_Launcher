@@ -5,6 +5,34 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class HomeWatchTest {
+    @Test fun aHomeDrawThatCancelsAWaitingRedirectDoesNotBlockLaterHomePresses() {
+        val w = watch()
+        w.opened("dev.plume", "dev.plume.MainActivity", 1_000)
+        assertEquals(HomeWatch.SETTINGS_WAIT_MS, w.opened(amazon, amazonHome, 2_000))
+        assertEquals(HomeWatch.KEEP, w.opened("dev.plume", "dev.plume.MainActivity", 2_100))
+        w.jumped() // Home drew, so the service cancels the pending redirect
+        assertEquals(HomeWatch.SETTINGS_WAIT_MS, w.opened(amazon, amazonHome, 4_000))
+    }
+    @Test fun wakeOnlyRecoversTheHomeThatWasVisibleBeforeStandby() {
+        val w = watch()
+        w.opened(amazon, amazonHome, 1_000)
+        w.opened("com.android.systemui", "Overlay", 2_000)
+        assertEquals(true, w.wake())
+        w.opened("com.netflix.ninja", "Player", 3_000)
+        assertEquals(false, w.wake())
+    }
+
+    @Test fun stockHomeEscapeLastsUntilAnotherRealAppOpens() {
+        val w = watch()
+        w.pause()
+        assertNull(w.opened(amazon, amazonHome, 1_000))
+        w.opened("android", "Overlay", 2_000)
+        assertEquals(false, w.wake())
+        assertNull(w.opened(amazon, amazonHome, 3_000))
+        w.opened("com.netflix.ninja", "Player", 4_000)
+        assertEquals(0L, w.opened(amazon, amazonHome, 5_000))
+    }
+
     private val amazon = "com.amazon.tv.launcher"
     private val amazonHome = "com.amazon.tv.launcher.ui.HomeActivity_vNext"
     private val starter = "com.amazon.firehomestarter"

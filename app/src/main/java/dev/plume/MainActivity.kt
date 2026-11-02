@@ -534,6 +534,14 @@ class MainActivity : Activity() {
             return
         }
         resumed = true
+        window.decorView.viewTreeObserver.addOnDrawListener(object : android.view.ViewTreeObserver.OnDrawListener {
+            override fun onDraw() {
+                window.decorView.post {
+                    window.decorView.viewTreeObserver.removeOnDrawListener(this)
+                    HomeOverride.running?.homeDrawn()
+                }
+            }
+        })
         if (currentWallpaper().startsWith("video:")) videoWallpaper.resume()
         returnTo = null // back by another way than Home: the next Home starts again at the first tile
         openedFrom?.get()?.let { tile -> ui.post { if (tile.isAttachedToWindow) settleRow(tile) } }
@@ -657,9 +665,12 @@ class MainActivity : Activity() {
      * unless the user turned it off.
      */
     private fun ensureHomeService() {
-        if (homeServiceOn()) return prefs.edit().remove("home_off").apply() // what Android says wins
+        if (homeServiceOn()) return
         HomeAlarm.release(this) // the service died without telling us: its alarm setting must not stay
-        if (prefs.getBoolean("home_off", false) || checkSelfPermission(WRITE_SECURE) != PackageManager.PERMISSION_GRANTED) return
+        if (!prefs.contains("home_requested") && homeServiceListed()) prefs.edit().putBoolean("home_requested", true).apply()
+        if (!HomeSetup.recover(prefs.getBoolean("home_requested", false), prefs.getBoolean("home_off", false),
+                prefs.getBoolean("home_repair", false)) ||
+            checkSelfPermission(WRITE_SECURE) != PackageManager.PERMISSION_GRANTED) return
         val me = ComponentName(this, HomeOverride::class.java).flattenToString()
         val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             .takeUnless { it == "null" }.orEmpty()
@@ -677,11 +688,15 @@ class MainActivity : Activity() {
 
     private fun toggleHomeButton() = if (homeServiceOn()) turnOffHomeButton() else turnOnHomeButton()
 
-    /** Off hands Home back to the TV's own launcher, and Plume leaves it off until switched on again. */
+    /** Native Home remains available when its accessibility helper is off, including on sole-launcher systems. */
     private fun turnOffHomeButton() {
+        if (soleHome() && !isDefaultHome()) {
+            makeDefaultHome()
+            return
+        }
         ui.removeCallbacks(homeServiceCheck)
         prefs.edit().putBoolean("home_off", true).apply()
-        HomeOverride.running?.disableSelf()
+        HomeOverride.running?.let { HomeOverride.turningOff = true; it.disableSelf() }
         if (homeServiceListed() && checkSelfPermission(WRITE_SECURE) == PackageManager.PERMISSION_GRANTED) {
             val me = ComponentName(this, HomeOverride::class.java)
             val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
@@ -701,7 +716,8 @@ class MainActivity : Activity() {
 
     /** The Home key service is an accessibility service, which Android only lets the user switch on. */
     private fun turnOnHomeButton() {
-        prefs.edit().remove("home_off").apply()
+        HomeOverride.turningOff = false
+        prefs.edit().remove("home_off").remove("home_repair").putBoolean("home_requested", true).apply()
         ensureHomeService() // works where the adb permission was granted
         if (homeServiceOn() || homeServiceListed()) {
             // A switch-off just before (disableSelf) can land after this write: check again, and write again if it did.
@@ -739,10 +755,20 @@ class MainActivity : Activity() {
         return false
     }
 
-    private fun isDefaultHome(): Boolean {
-        if (Build.VERSION.SDK_INT >= 29 && getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_HOME) == true) return true
-        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        return packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName == packageName
+    private fun isDefaultHome() = nativeHome()
+
+    private fun openTvHome() {
+        val homes = homeActivities().filter { it.activityInfo.packageName != packageName }
+        holdMenu(settingsScrim, homes.map { entry ->
+            entry.loadLabel(packageManager).toString() to {
+                val service = HomeOverride.running
+                service?.pauseHome()
+                try {
+                    startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                        .setComponent(ComponentName(entry.activityInfo.packageName, entry.activityInfo.name)))
+                } catch (_: RuntimeException) { service?.resumeHome() }
+            }
+        })
     }
 
     /**
@@ -802,10 +828,11 @@ class MainActivity : Activity() {
     }
 
     /** Home opens Plume one way or the other: the service anywhere, the role only where the TV honours it. */
-    private fun homeSetUp() = homeServiceOn() || (isDefaultHome() && !googleTv() && !fireTv())
+    private fun homeSetUp() = homeServiceOn() || isDefaultHome()
 
     private fun startHomeSetup() {
         restrictedTried = false
+        if (isDefaultHome()) return testPopup(1)
         // Fire OS takes the role request and ignores it; Google TV grants it and still opens its own launcher.
         if (fireTv() || googleTv()) return tryHomeService()
         val roles = if (Build.VERSION.SDK_INT >= 29) getSystemService(RoleManager::class.java) else null
@@ -819,7 +846,8 @@ class MainActivity : Activity() {
     private fun serviceStillOff() = if (sdk() >= 33 && !restrictedTried) restrictedPopup() else adbPopup()
 
     private fun tryHomeService() {
-        prefs.edit().remove("home_off").apply()
+        HomeOverride.turningOff = false
+        prefs.edit().remove("home_off").remove("home_repair").putBoolean("home_requested", true).apply()
         ensureHomeService() // works where the adb permission was granted
         if (homeServiceOn()) testPopup(2) else if (homeServiceListed()) checkHomeService() else servicePopup()
     }
@@ -1563,7 +1591,7 @@ class MainActivity : Activity() {
     /**
      * Small frames of a video, one every 4 s (at most 30), read from the file, so the text colour can be one that reads
      * on all of them: the screen cannot be read on TVs that play video on an overlay, and a colour that changed with
-     * the picture would flicker. ponytail: read again on every load (a few seconds, off the UI thread); cache if it shows.
+     * the picture would flicker. Read again on every load (a few seconds, off the UI thread); cache if it shows.
      */
     private fun videoFrames(video: File, w: Int, h: Int): List<Bitmap> {
         val r = android.media.MediaMetadataRetriever()
@@ -2757,6 +2785,7 @@ class MainActivity : Activity() {
             R.string.screensaver_timing to Triple(getString(R.string.screensaver_timing), "") { openScreensaverSettings() },
             R.string.setup_home to Triple(getString(R.string.setup_home), "") { closeLauncherSettings(); startHomeSetup() },
             R.string.home_button to Triple(getString(R.string.home_button), toggle(homeServiceOn())) { toggleHomeButton() },
+            R.string.open_tv_home to Triple(getString(R.string.open_tv_home), "") { openTvHome() },
             R.string.smooth_volume to Triple(getString(R.string.smooth_volume), toggle(prefs.getBoolean("smooth_volume", false))) {
                 prefs.edit().putBoolean("smooth_volume", !prefs.getBoolean("smooth_volume", false)).commit()
                 HomeOverride.running?.applyKeyFilter()
@@ -2801,7 +2830,8 @@ class MainActivity : Activity() {
             Triple(R.string.section_screensaver, rows[R.string.screensaver]!!.second, listOf(R.string.screensaver, R.string.test_screensaver, R.string.screensaver_timing)),
             // Home app is Android TV's own way (Google TV and Fire OS keep their home); Fire OS never passes keys to us, so no smooth volume there.
             Triple(R.string.section_remote_home, if (homeSetUp()) getString(R.string.home_button) else on(false),
-                listOfNotNull(R.string.home_button, R.string.default_launcher.takeIf { !googleTv() && !fireTv() }, R.string.smooth_volume.takeIf { !fireTv() },
+                listOfNotNull(R.string.home_button, R.string.default_launcher,
+                    R.string.open_tv_home.takeIf { homeActivities().any { it.activityInfo.packageName != packageName } }, R.string.smooth_volume.takeIf { !fireTv() },
                     R.string.section_keys, R.string.setup_home)),
         )
         val section = sections.firstOrNull { at in it.third }
@@ -5948,7 +5978,7 @@ class MainActivity : Activity() {
         override fun setTintList(t: ColorStateList?) { paint.colorFilter = t?.let { PorterDuffColorFilter(it.defaultColor, PorterDuff.Mode.SRC_IN) }; invalidateSelf() }
         @Deprecated("Deprecated in Java") override fun getOpacity() = PixelFormat.TRANSLUCENT
     }
-    // ponytail: never evicted; fine while only a few tile sizes exist, cap it if views start animating their size
+    // Never evicted; fine while only a few tile sizes exist, cap it if views start animating their size
     private val baked = HashMap<String, Bitmap>()
 
     /** Supporting text: the secondary grey in dark mode, [lightAlpha] of the main colour in light mode. */

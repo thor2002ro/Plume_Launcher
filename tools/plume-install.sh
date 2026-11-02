@@ -19,11 +19,13 @@
 #   -h                      this help
 #
 # What the steps are:
-#   all TVs        give Plume the WRITE_SECURE_SETTINGS grant, turn on its Home button service, wait until
-#                  the TV says the service is running
+#   native Home    leave accessibility and grants alone when Home already resolves to Plume
+#   other TVs      give Plume WRITE_SECURE_SETTINGS, allow restricted settings on Android 13+, enable and
+#                  verify its Home service for user 0; preserve previous values for --undo
 #   Fire TV        Android 9 to 11 (Fire OS 7 and 8): a Plume with the alarm change sets the alarm timing
 #                  (min_futurity) by itself when its service starts. The script looks whether it did. A Plume
-#                  without that change leaves it, and Home then takes about 5 seconds. See CONTRIBUTING.md, "alarms".
+#                  without that change leaves it, and Home then takes about 5 seconds.
+#                  Android 12+: verify exact-alarm access and DeviceConfig timing before enabling fast Home.
 #   Fire TV, --disable-stock-launcher: the script first writes a recovery record on the TV, turns the launcher
 #                  off, checks that Plume's service runs and that Home opens Plume, and turns the launcher on
 #                  again if either check fails.
@@ -125,9 +127,58 @@ case $STATEDATA in *"No such file"*) STATEDATA= ;; esac
 is_listed() { printf '%s\n' "$ENABLED" | tr ':' '\n' | grep -qE "^($SERVICE|$PKG/\.HomeOverride)\$"; }
 LISTED=0
 is_listed && LISTED=1
-# "services:{" on Fire OS 7 (Android 9), "Bound services:{" later. Fire OS names a service by its label ("Plume: Home button").
-bound() { tv dumpsys accessibility | grep -E 'Bound services|^ *services:\{' | grep -qi plume; }
+USER_ID=$(tv am get-current-user)
+case $USER_ID in ''|*[!0-9]*) die "cannot determine the active Android user" ;; esac
+[ "$USER_ID" = 0 ] || die "this installer supports the TV owner (user 0) only; no settings changed"
+# A configured service, or one bound for another user, is not a running service. Unknown output is not success.
+bound() {
+  tv dumpsys accessibility | awk -v user="$USER_ID" '
+    /User state\[/ { active = ($0 ~ ("id=" user "[,}]")); section=0 }
+    active && /Bound services:|^[[:space:]]*services:/ { section=1; seen=1; depth=0 }
+    section {
+      if ($0 ~ /dev\.plume\/(dev\.plume\.)?HomeOverride([^[:alnum:]_.]|$)|label=Plume: Home button(,|])|label=Plume : bouton Accueil(,|])/) found=1
+      line=$0; opens=gsub(/\{/, "", line); line=$0; closes=gsub(/\}/, "", line); depth+=opens-closes
+      if (depth<=0) section=0
+    }
+    END { exit (found ? 0 : (seen ? 1 : 2)) }'
+}
 MINFUT() { tv settings get global alarm_manager_constants | tr ',' '\n' | sed -n 's/^min_futurity=//p' | head -1; }
+routes() {
+  RESOLVED=$(tv cmd package resolve-activity --brief --user "$USER_ID" -a android.intent.action.MAIN -c android.intent.category.HOME)
+  NATIVE=0
+  printf '%s\n' "$RESOLVED" | grep -q '^dev.plume/' && NATIVE=1
+  HOMES=$(tv cmd package query-activities --brief --components --user "$USER_ID" -a android.intent.action.MAIN -c android.intent.category.HOME | grep -E '^[[:alnum:]_.]+/[[:alnum:]_.$]+$')
+  SOLE=0
+  [ -n "$HOMES" ] && ! printf '%s\n' "$HOMES" | grep -qv '^dev.plume/' && SOLE=1
+}
+routes
+
+appmode() {
+  tvr appops get --user "$USER_ID" "$PKG" "$1"
+  [ "$TVRC" = 0 ] || return 1
+  case $TVOUT in *"No operations"*) echo default; return ;; esac
+  printf '%s\n' "$TVOUT" | sed -n "s/.*$1: \(allow\|ignore\|deny\|default\|foreground\|errored\)\([;[:space:]].*\)\{0,1\}$/\1/p" | head -1
+}
+setop() {
+  OP=$1; REC=$2
+  OLD=$(appmode "$OP")
+  case $OLD in allow) return 0 ;; default|ignore|deny|foreground|errored) ;; *) bad "cannot read $OP; left unchanged"; return 1 ;; esac
+  has "$REC=$OLD" || record "$REC=$OLD" || { bad "cannot save $OP recovery state"; return 1; }
+  if tvok appops set --user "$USER_ID" "$PKG" "$OP" allow && [ "$(appmode "$OP")" = allow ]; then ok "$OP allowed"
+  else bad "$OP was refused"; return 1; fi
+}
+setting_value() { case $1 in null) return 0 ;; ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
+undoop() {
+  OLD=$(printf '%s\n' "$STATEDATA" | sed -n "s/^$2=//p" | head -1)
+  [ -n "$OLD" ] || return 0
+  case $OLD in allow|default|ignore|deny|foreground|errored) ;; *) bad "invalid $2 recovery state"; return 1 ;; esac
+  NOW=$(appmode "$1")
+  if [ "$NOW" = allow ]; then
+    tvok appops set --user "$USER_ID" "$PKG" "$1" "$OLD" && [ "$(appmode "$1")" = "$OLD" ] || { bad "could not restore $1"; return 1; }
+  elif [ -z "$NOW" ]; then bad "cannot read $1 during undo"; return 1
+  fi
+  unrecord "$2=$OLD" || bad "could not update recovery record"
+}
 
 say "Found: $MAKER $MODEL, $KINDNAME"
 if [ $INSTALLED = 1 ]; then say "Plume: installed${VERSION:+, version $VERSION}"; else say "Plume: not installed"; fi
@@ -142,7 +193,7 @@ if [ $UNDO = 1 ]; then
   U_STOCK=$(printf '%s\n' "$STATEDATA" | sed -n 's/^stock=//p' | head -1)
   U_SERVICE=0; has service=1 && U_SERVICE=1
   U_GRANT=0; has granted=1 && U_GRANT=1
-  if [ -z "$U_STOCK" ] && [ $U_SERVICE = 0 ] && [ $U_GRANT = 0 ]; then
+  if [ -z "$STATEDATA" ]; then
     say "Nothing to undo: this script has not changed anything on this TV."
     [ $LISTED = 1 ] && say "Plume's Home button service is on, and stays on: it was not this script that turned it on."
     exit 0
@@ -161,8 +212,14 @@ if [ $UNDO = 1 ]; then
   say "Undoing:"
   # The launcher comes back first: with the service off and the launcher off, Home would go nowhere.
   if [ -n "$U_STOCK" ]; then
+    [ "$U_STOCK" = "$FIRE_LAUNCHER" ] || die "unexpected launcher in recovery record"
     if tvok pm enable "$U_STOCK" && ! disabled "$U_STOCK"; then ok "stock launcher on again"; unrecord "stock=$U_STOCK" || bad "could not update the record on the TV"
     else bad "could not turn $U_STOCK on. Run: adb shell pm enable $U_STOCK"; fi
+  fi
+  if [ $FAILED != 0 ]; then die "stock Home could not be restored; leaving Plume enabled and the recovery record intact"; fi
+  routes
+  if [ $U_SERVICE = 1 ] && { [ $SOLE = 1 ] || [ -z "$HOMES" ]; } && [ $NATIVE = 0 ]; then
+    die "Plume is the only Home candidate but is not the native Home resolver. Set Plume as default before undoing its service."
   fi
   if [ $U_SERVICE = 1 ]; then
     if [ $LISTED = 1 ]; then
@@ -171,10 +228,13 @@ if [ $UNDO = 1 ]; then
       else tvok settings delete secure enabled_accessibility_services && tvok settings put secure accessibility_enabled 0; fi
       ENABLED=$(tv settings get secure enabled_accessibility_services); [ "$ENABLED" = null ] && ENABLED=
       n=0; while bound && [ $n -lt 15 ]; do sleep 1; n=$((n + 1)); done
-      if is_listed || bound; then bad "the TV still runs Plume's service. Turn it off in Settings > Accessibility."
+      bound; BOUND_RC=$?
+      if is_listed || [ $BOUND_RC != 1 ]; then bad "cannot confirm Plume's service is off. Check Settings > Accessibility; recovery record kept."
       else ok "Home button service off"; unrecord service=1 || bad "could not update the record on the TV"; fi
     else
-      ok "Home button service was already off"; unrecord service=1
+      bound; BOUND_RC=$?
+      if [ $BOUND_RC = 1 ]; then ok "Home button service was already off"; unrecord service=1
+      else bad "cannot confirm the unlisted Home service is off; recovery record kept"; fi
     fi
     if [ "$KIND" = fire ] && [ "$SDK" -le 30 ] && ! has futurity0=1 && [ $FAILED = 0 ]; then
       n=0; while [ "$(MINFUT)" = 0 ] && [ $n -lt 10 ]; do sleep 1; n=$((n + 1)); done
@@ -183,7 +243,33 @@ if [ $UNDO = 1 ]; then
       else ok "alarm timing is the TV's own value"; fi
     fi
   fi
-  if [ $U_GRANT = 1 ]; then
+  # Withdraw the app's marker before changing any modern alarm capability.
+  U_MARKER=$(printf '%s\n' "$STATEDATA" | sed -n 's/^marker=//p' | head -1)
+  U_FUT=$(printf '%s\n' "$STATEDATA" | sed -n 's/^futurity=//p' | head -1)
+  if [ -n "$U_MARKER" ]; then
+    setting_value "$U_MARKER" || die "invalid marker recovery state"
+    tvr settings get global plume_home_alarm_sdk; NOW=$TVOUT
+    if [ "$TVRC" != 0 ] || ! setting_value "$NOW"; then bad "cannot read Home alarm marker; recovery record kept"
+    elif [ "$NOW" = "$SDK" ]; then
+      if [ "$U_MARKER" = null ]; then tvok settings delete global plume_home_alarm_sdk
+      else tvok settings put global plume_home_alarm_sdk "$U_MARKER"; fi
+      [ "$(tv settings get global plume_home_alarm_sdk)" = "$U_MARKER" ] || bad "could not restore Home alarm marker"
+    fi
+    [ $FAILED = 0 ] && unrecord "marker=$U_MARKER"
+  fi
+  if [ -n "$U_FUT" ] && [ $FAILED = 0 ]; then
+    setting_value "$U_FUT" || die "invalid alarm recovery state"
+    tvr device_config get alarm_manager min_futurity; NOW=$TVOUT
+    if [ "$TVRC" != 0 ] || ! setting_value "$NOW"; then bad "cannot read alarm timing; recovery record kept"
+    elif [ "$NOW" = 0 ]; then
+      if [ "$U_FUT" = null ]; then tvok device_config delete alarm_manager min_futurity
+      else tvok device_config put alarm_manager min_futurity "$U_FUT"; fi
+      [ "$(tv device_config get alarm_manager min_futurity)" = "$U_FUT" ] || bad "could not restore alarm timing"
+    fi
+    [ $FAILED = 0 ] && unrecord "futurity=$U_FUT"
+  fi
+  if [ $FAILED = 0 ]; then undoop SCHEDULE_EXACT_ALARM exact; undoop ACCESS_RESTRICTED_SETTINGS restricted; fi
+  if [ $U_GRANT = 1 ] && [ $FAILED = 0 ]; then
     if tvok pm revoke $PKG $GRANT && ! tv dumpsys package $PKG | grep -q "$GRANT: granted=true"; then ok "grant taken back"; unrecord granted=1 || bad "could not update the record on the TV"
     else bad "could not take the grant back"; fi
   fi
@@ -195,6 +281,15 @@ fi
 # ---- Install: the plan ------------------------------------------------------------------------------------------
 if [ $STOCK = 1 ]; then
   [ "$KIND" = fire ] || die "--disable-stock-launcher is for a Fire TV only. On $KINDNAME the stock launcher must stay on: turning it off can stop the TV from starting."
+  printf '%s\n' "$PACKAGES" | grep -qx "package:$FIRE_LAUNCHER" || die "stock launcher is absent; nothing to disable"
+  disabled "$FIRE_LAUNCHER" && die "stock launcher is already disabled; leaving its existing state unchanged"
+  printf '%s\n' "$HOMES" | grep -q '^dev.plume/' || die "cannot verify Plume as an enabled Home candidate; stock launcher stays on"
+fi
+
+if [ $NATIVE = 1 ] && [ $STOCK = 0 ]; then
+  [ -z "$APK" ] || [ $DRYRUN = 1 ] || adb -s "$D" install -r "$APK" || die "APK installation failed"
+  say "Plume is the native Home resolver$([ $SOLE = 1 ] && echo ' and the only enabled Home candidate'). No accessibility service or grant is needed."
+  exit 0
 fi
 if [ $INSTALLED = 0 ] && [ -z "$APK" ]; then
   die "Plume is not installed on this TV. Give the APK with -a plume.apk, or install it first."
@@ -205,6 +300,7 @@ say "This will:"
 [ $GRANTED = 0 ] && say "  - give Plume the $GRANT grant (lets it keep its Home button service on)"
 [ $LISTED = 0 ] && say "  - switch on Plume's Home button service in Android's Accessibility settings"
 [ $LISTED = 1 ] && say "  - leave Plume's Home button service as it is (it is on already; --undo will leave it on)"
+[ "$SDK" -ge 33 ] && say "  - allow restricted settings for Plume, preserving the previous app-op for --undo"
 if [ $STOCK = 1 ]; then
   say "  - write a recovery record on the TV, then turn off the Fire TV launcher ($FIRE_LAUNCHER). Home then opens Plume and not Amazon's home."
   say "  - check that Plume's service runs and that Home opens Plume (this opens Settings and presses Home on the TV)."
@@ -214,7 +310,8 @@ if [ "$KIND" = fire ] && [ "$SDK" -le 30 ]; then
   say "  - look whether Plume has set min_futurity to 0. A Plume with the alarm change does it by itself when its"
   say "    service starts, so Home does not wait 5 seconds. A Plume without it does not, and Home takes about 5 seconds."
 elif [ "$KIND" = fire ]; then
-  say "  Note: this Android is newer than 11. Plume does not use its alarm here, so Home may take about 5 seconds."
+  say "  - verify exact-alarm access and set DeviceConfig alarm_manager/min_futurity=0; save previous values for --undo"
+  say "    Enable fast Home only after verification. Unsupported devices keep the ordinary Home start."
 fi
 [ "$KIND" = google ] && say "  Note: Google TV's launcher stays on. Holding Home still opens the Google TV dashboard."
 say "  - then wait until the TV says the service is running"
@@ -229,10 +326,28 @@ say "Setting up:"
 if [ -n "$APK" ]; then
   if adb -s "$D" install -r "$APK" >/dev/null 2>&1; then ok "Plume installed"; else bad "could not install $APK"; fi
 fi
+[ $FAILED = 0 ] || die "installation failed; no settings changed"
+[ "$SDK" -lt 33 ] || setop ACCESS_RESTRICTED_SETTINGS restricted
 if [ $GRANTED = 0 ]; then
   if ! record granted=1; then bad "could not write the recovery record on the TV, so the grant is not given"
   elif tvok pm grant $PKG $GRANT && tv dumpsys package $PKG | grep -q "$GRANT: granted=true"; then ok "grant given"
   else unrecord granted=1; bad "the grant was refused. On some TVs, turn on USB debugging (Security settings) as well."; fi
+fi
+if [ "$KIND" = fire ] && [ "$SDK" -ge 31 ] && [ $FAILED = 0 ]; then
+  if setop SCHEDULE_EXACT_ALARM exact; then
+    tvr device_config get alarm_manager min_futurity; FUT=$TVOUT; FUT_RC=$TVRC
+    tvr settings get global plume_home_alarm_sdk; MARKER=$TVOUT; MARKER_RC=$TVRC
+    if [ "$FUT_RC" != 0 ] || [ "$MARKER_RC" != 0 ] || ! setting_value "$FUT" || ! setting_value "$MARKER"; then
+      bad "cannot read modern alarm configuration; timing and marker left unchanged"
+    else
+      if { [ "$FUT" = 0 ] || record "futurity=$FUT"; } &&
+          { [ "$MARKER" = "$SDK" ] || record "marker=$MARKER"; } &&
+          tvok device_config put alarm_manager min_futurity 0 && [ "$(tv device_config get alarm_manager min_futurity)" = 0 ] &&
+          tvok settings put global plume_home_alarm_sdk "$SDK" && [ "$(tv settings get global plume_home_alarm_sdk)" = "$SDK" ]; then
+        ok "modern Fire TV fast Home configured"
+      else bad "modern fast Home is unavailable; run --undo to restore recorded changes"; fi
+    fi
+  fi
 fi
 if [ $LISTED = 0 ]; then
   FUT0=$(MINFUT)

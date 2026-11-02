@@ -63,7 +63,71 @@ check "Fire OS 8 install works" '[ $RC = 0 ] && has "$OUT" "Fire OS 8" && has "$
 
 new fire14
 run
-check "Fire OS 14 is named, and the alarm is not used" '[ $RC = 0 ] && has "$OUT" "Fire OS 14, Android 14" && ! has "$OUT" min_futurity=0 && has "$OUT" "about 5 seconds"'
+check "Fire OS 14 fast Home is capability gated" '[ $RC = 0 ] && [ "$(st marker)" = 34 ] && [ "$(st futurity)" = 0 ] && [ "$(st exact)" = allow ]'
+run --undo
+check "modern Fire TV undo restores capabilities" '[ $RC = 0 ] && [ "$(st marker)" = null ] && [ "$(st futurity)" = null ] && [ "$(st exact)" = default ] && [ "$(st restricted)" = default ]'
+
+new fire14
+FAKE_FAIL_SILENT='device_config get'; export FAKE_FAIL_SILENT
+run
+check "a failed configuration read cannot lose the original timing" '[ $RC != 0 ] && [ "$(st futurity)" = null ] && [ "$(st marker)" = null ] && ! has "$(record)" futurity='
+unset FAKE_FAIL_SILENT
+run --undo
+check "undo after a refused capability read restores appops" '[ $RC = 0 ] && [ "$(st exact)" = default ] && [ "$(st restricted)" = default ]'
+
+new fire14 '{"restricted": "ignore", "exact": "deny", "futurity": "3000", "marker": "30"}'
+run
+run
+run --undo
+check "repeated modern setup keeps the original baseline" '[ $RC = 0 ] && [ "$(st restricted)" = ignore ] && [ "$(st exact)" = deny ] && [ "$(st futurity)" = 3000 ] && [ "$(st marker)" = 30 ]'
+
+new fire14 '{"futurity": "broken"}'
+run
+check "invalid DeviceConfig is left unchanged" '[ $RC != 0 ] && [ "$(st futurity)" = broken ] && [ "$(st marker)" = null ]'
+
+new fire14
+run
+FAKE_FAIL_SILENT='device_config get'; export FAKE_FAIL_SILENT
+run --undo
+check "failed alarm read during undo keeps its recovery value" '[ $RC != 0 ] && has "$(record)" futurity=null && [ "$(st futurity)" = 0 ]'
+unset FAKE_FAIL_SILENT
+run --undo
+check "undo retries safely after an unreadable setting" '[ $RC = 0 ] && [ "$(st futurity)" = null ] && [ -z "$(record)" ]'
+
+new fire14
+run
+FAKE_FAIL_SILENT='settings get global plume_home_alarm_sdk'; export FAKE_FAIL_SILENT
+run --undo
+check "failed marker read during undo keeps the marker record" '[ $RC != 0 ] && has "$(record)" marker=null && [ "$(st marker)" = 34 ]'
+
+new google '{"native": true, "sole": true}'
+run
+check "sole native Home needs no grant or accessibility service" '[ $RC = 0 ] && [ -z "$(st enabled)" ] && [ "$(st granted)" = False ]'
+
+new fire7 '{"native": true, "sole": true}'
+run --disable-stock-launcher
+check "an absent stock launcher is never disabled" '[ $RC != 0 ] && [ "$(st disabled)" = "[]" ] && [ -z "$(st enabled)" ]'
+
+new google '{"bound_dump": "User state[attributes:{id=0, currentUser=true}\n Bound services:{}\n Enabled services:{dev.plume/.HomeOverride}\nUser state[attributes:{id=10, currentUser=false}\n Bound services:{dev.plume/.HomeOverride}"}'
+run
+check "configured or other-user services do not count as bound" '[ $RC != 0 ] && has "$OUT" "does not show"'
+
+new fire7 '{"bound_dump": "User state[attributes:{id=0, currentUser=true}\n services:{\n Service[label=Plume: Home button,feedbackType[]]\n}"}'
+run
+check "legacy multiline bound service can use its exact English label" '[ $RC = 0 ]'
+
+new google '{"bound_dump": "User state[attributes:{id=0, currentUser=true}\n Bound services:{Service[label=Plume : bouton Accueil,feedbackType[]]}"}'
+run
+check "bound service can use its exact French label" '[ $RC = 0 ]'
+
+new google '{"bound_dump": "User state[attributes:{id=0, currentUser=true}\n Bound services:{Service[label=Plume: Home button impostor,feedbackType[]]}"}'
+run
+check "another service with a similar label is never accepted" '[ $RC != 0 ]'
+
+new google '{"bound_dump": "unexpected output Plume"}'
+run
+run --undo
+check "unknown service state keeps recovery record" '[ $RC != 0 ] && has "$(record)" service=1'
 
 new google
 run

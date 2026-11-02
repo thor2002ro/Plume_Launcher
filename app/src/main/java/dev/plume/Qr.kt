@@ -112,7 +112,7 @@ internal object Qr {
         set(size - 8, 8, true) // the always-dark module
 
         // Data in two-column zigzags from the bottom right, skipping the timing column.
-        // ponytail: fixed mask 0 instead of scoring all 8; scanners read any mask, it's only less robust in rare cases.
+        // Fixed mask 0 instead of scoring all 8; scanners read any mask, it's only less robust in rare cases.
         var k = 0
         var col = size - 1
         var up = true
