@@ -194,7 +194,7 @@ Using Plume as the sole enabled launcher is optional. Detection never disables a
 
 **Home & remote → Open another launcher** opens an enabled alternative Home app without Plume immediately covering it. The pause ends when you open another app. This option is absent when Plume is the only Home candidate. Turning off **Home button service** leaves native Home intact; use the default launcher setting to change native Home. A service disconnected by Android does not overwrite your saved On/Off choice. If Android removes it from the enabled list during a disconnect, enable it again from Plume rather than repeatedly fighting the system's accessibility switch.
 
-Remote keys can open an app or input, send a media key, or open Back, Recent apps, Notifications, Quick settings, the Power menu or Android settings. Back, OK, the arrows, Home, Power and volume can't be changed, so you can't lock yourself out. The PIN lock keeps the layout safe; it is not parental control.
+Remote keys can open an app, input or **Plume All apps**, send a media key, or open Back, Recent apps, Notifications, Quick settings, the Power menu or Android settings. Back, OK, the arrows, Home, Power and volume can't be changed, so you can't lock yourself out. The PIN lock keeps the layout safe; it is not parental control.
 
 ## Wallpapers and screensavers
 

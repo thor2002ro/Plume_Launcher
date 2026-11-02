@@ -264,6 +264,7 @@
     <string name="act_power">Menu d\'alimentation</string>
     <string name="act_settings">Paramètres Android</string>
     <string name="act_network">Paramètres réseau</string>
+    <string name="act_all_apps">Toutes les applications Plume</string>
     <plurals name="n_keys">
         <item quantity="one">%d touche</item>
         <item quantity="other">%d touches</item>

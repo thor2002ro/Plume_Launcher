@@ -349,6 +349,9 @@ class MainActivity : Activity() {
     private var rowOut = false // "Show row: On Down": the bottom row has focus, so it's slid in
     private lateinit var allApps: View
     private lateinit var allAppsGrid: GridLayout
+    // This Home activity skips saved state; retain only the context-free pending request across rebuilds.
+    private val allAppsRequest by lazy { (lastNonConfigurationInstance as? AllAppsRequest) ?: AllAppsRequest() }
+    private var startupUi: Runnable? = null
     private lateinit var wifi: ImageView
     private lateinit var glass: GlassLayer // paints the blurred wallpaper under glass tiles
     private lateinit var videoWallpaper: VideoWallpaper
@@ -405,6 +408,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        if (lastNonConfigurationInstance == null) allAppsRequest.accept(intent.action)
         // The system starts Home before the user unlocks (Direct Boot). Register first, so a missed
         // broadcast cannot leave the home screen empty. Do not read prefs, files or the cache yet.
         registerReceiver(unlockReceiver, IntentFilter(Intent.ACTION_USER_UNLOCKED))
@@ -489,17 +493,19 @@ class MainActivity : Activity() {
             setOnClickListener { action() }
             setOnLongClickListener { if (!holdFired) fireHold(this); true } // hold OK: move, hide or add icons
         }
-        if (fakeSetup(intent)) {
+        if (allAppsRequest.pending) {
+            prepareAllAppsRequest()
+        } else if (fakeSetup(intent)) {
             // debug: setup for a pretend TV already started
         } else if (prefs.getBoolean("reopen_settings", false)) {
             prefs.edit().remove("reopen_settings").apply()
-            ui.post { openLauncherSettings(R.string.theme) }
+            postStartupUi { openLauncherSettings(R.string.theme) }
         } else if (!homeSetUp() && !prefs.getBoolean("setup_shown", false)) {
             // Fresh install: walk through making Home land on Plume, the one step that has to happen by hand.
             prefs.edit().putBoolean("setup_shown", true).apply()
-            ui.post { startHomeSetup() }
+            postStartupUi { startHomeSetup() }
         } else if (notesUnseen()) {
-            ui.post { whatsNewCard() } // after an update; the self-updater reopens Plume, so it's seen right away
+            postStartupUi { whatsNewCard() } // after an update; the self-updater reopens Plume, so it's seen right away
         }
 
         try {
@@ -576,6 +582,14 @@ class MainActivity : Activity() {
         Bing.onChanged = bingChanged
         Bing.refresh(applicationContext, prefs)
         ui.post { updateBadge() } // after layout, so the icon has its size
+        showRequestedAllApps()
+    }
+
+    override fun onRetainNonConfigurationInstance(): Any = allAppsRequest
+
+    override fun recreate() {
+        recreating = true
+        super.recreate()
     }
 
     /** Auto theme flips at sunrise and sunset (or 7:00 and 19:00) even while the home screen just sits there. */
@@ -638,6 +652,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        startupUi?.let { ui.removeCallbacks(it) }
+        startupUi = null
         endHomeTest()
         unregisterReceiver(unlockReceiver)
         if (ready) {
@@ -1075,6 +1091,15 @@ class MainActivity : Activity() {
     /** Home pressed while already home: close whatever is open and go back to the start of the apps row. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (allAppsRequest.accept(intent.action)) {
+            setIntent(intent)
+            if (ready) prepareAllAppsRequest()
+            return
+        }
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) {
+            setIntent(intent)
+            clearAllAppsRequest()
+        }
         if (!ready) return
         // Home pressed in Android's settings means home, not settings; the screensaver's end comes in as Home too.
         if (intent.hasCategory(Intent.CATEGORY_HOME) && !prefs.getBoolean("return_dream", false)) prefs.edit().remove("return_settings").apply()
@@ -1104,6 +1129,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Home screen: Back only closes overlays")
     override fun onBackPressed() {
+        clearAllAppsRequest()
         if (!ready) return
         when {
             settingsScrim.visibility == View.VISIBLE -> pageBack?.invoke() ?: closeLauncherSettings()
@@ -3597,6 +3623,7 @@ class MainActivity : Activity() {
                 SOURCES = inputs
                 if (movingTop == null) applyTopBar() // Sources shows only while the TV has an input
                 renderApps()
+                showRequestedAllApps()
             }
         }
     }
@@ -4620,6 +4647,39 @@ class MainActivity : Activity() {
     }
 
     // ---------- all apps ----------
+
+    private fun postStartupUi(action: () -> Unit) {
+        val pending = Runnable {
+            startupUi = null
+            if (!isDestroyed && !recreating) action()
+        }
+        startupUi = pending
+        ui.post(pending)
+    }
+
+    private fun prepareAllAppsRequest() {
+        startupUi?.let { ui.removeCallbacks(it) }
+        startupUi = null
+        prefs.edit().remove("return_settings").remove("return_dream").remove("reopen_settings").apply()
+        returnTo = null
+        openedFrom = null
+        setupDialog?.dismiss()
+        if (editing) endEdit()
+        if (movingTop != null) endTopMove(false)
+        if (settingsScrim.visibility == View.VISIBLE) closeLauncherSettings()
+        showRequestedAllApps()
+    }
+
+    private fun clearAllAppsRequest() {
+        allAppsRequest.cancel()
+        if (intent.action == AllAppsRequest.ACTION) setIntent(Intent(intent).setAction(Intent.ACTION_MAIN))
+    }
+
+    private fun showRequestedAllApps() {
+        if (!allAppsRequest.consume(ready, resumed, APPS != null, recreating)) return
+        clearAllAppsRequest()
+        if (allApps.visibility != View.VISIBLE) openAllApps()
+    }
 
     private fun openAllApps() {
         allAppsGrid.removeAllViews()

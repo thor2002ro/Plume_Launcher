@@ -33,6 +33,8 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **Power menu icon.** Hold **OK** on a top-bar icon and select **Add icon**, then **Power menu**. The icon opens the Android power menu.
 - **Remote battery.** The top bar shows your Bluetooth remote's battery by default. Hold **OK** on its icon to hide it or change the alert; use **Add icon → Remote battery** to restore it.
 - **More apps.** Plume shows installed apps that do not have a TV launcher entry. Some apps need touch or a mouse.
+- Map a remote key to **Plume All apps** to open the full app grid from another app.
+
 - Keep other launchers enabled and test native Home without accessibility redirection. Sole-launcher support remains optional.
 - Home redirection detects declared launcher activities and aliases on more TV boxes. It leaves unrelated launcher windows alone.
 
