@@ -52,6 +52,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - On Google TV, a notice or a sign-in screen no longer brings Plume to the front.
 - On some CVTE TVs, the Home button returns to Plume from HDMI or Live TV.
 - On Xiaomi TVs, **Plume settings → Updates → Install** opens the TV's installer. Before, Plume closed.
+- On Xiaomi TVs, Home opens Plume when **Smooth volume** is on. Before, Home opened the Xiaomi home screen.
 - On debloated Google TVs, the **Finish setup** card does not come back after a restart. Folder wallpapers load after a restart.
 - Plume no longer closes when the theme changes while a picture loads, or when the screensaver ends.
 - Old wallpapers no longer ship in the app. An old selection shows a plain colour until you select another wallpaper.
