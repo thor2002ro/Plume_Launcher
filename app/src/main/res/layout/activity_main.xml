@@ -163,6 +163,17 @@
                 android:src="@drawable/ic_power"
                 android:visibility="gone" />
 
+            <ImageView
+                android:id="@+id/restartButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@string/restart_tv"
+                android:focusable="true"
+                android:padding="8dp"
+                android:src="@drawable/ms_restart_alt"
+                android:visibility="gone" />
+
             <!-- The remote battery stays on the top bar; its level is read over Bluetooth. -->
             <ImageView
                 android:id="@+id/batteryButton"

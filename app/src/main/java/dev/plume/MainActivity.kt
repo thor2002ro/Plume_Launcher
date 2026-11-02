@@ -459,6 +459,7 @@ class MainActivity : Activity() {
             R.id.systemSettings to { unlock { openSettings(Settings.ACTION_SETTINGS) } },
             R.id.launcherSettings to { unlock { openLauncherSettings() } },
             R.id.powerButton to { powerDialog() },
+            R.id.restartButton to { unlock { restartDialog() } },
             R.id.batteryButton to { refreshRemoteBattery(force = true) },
         )) findViewById<ImageView>(id).apply {
             setColorFilter(fg)
@@ -2937,7 +2938,7 @@ class MainActivity : Activity() {
 
     private var unlockedUntil = 0L // one PIN covers a few minutes of changes, until the home screen is left
     private var pinFails = 0
-    private var pinWaitUntil = 0L // ponytail: in memory, so restarting Plume resets the wait; fine for kids at a remote
+    private var pinWaitUntil = 0L // in memory, so restarting Plume resets the wait; fine for kids at a remote
     private var pinBox: View? = null
 
     private fun locked() = lockOn() && SystemClock.elapsedRealtime() > unlockedUntil
@@ -4195,6 +4196,7 @@ class MainActivity : Activity() {
     /** The bar's icons in their default order, with the key each is saved under. */
     private val TOP_KEYS = linkedMapOf(R.id.wifi to "wifi", R.id.sourcesButton to "sources", R.id.allAppsButton to "apps",
         R.id.systemSettings to "system", R.id.launcherSettings to "plume", R.id.powerButton to "power",
+        R.id.restartButton to "restart",
         R.id.batteryButton to "battery")
 
     private var movingTop: View? = null // the icon being moved, while Left and Right slide it
@@ -4204,8 +4206,8 @@ class MainActivity : Activity() {
     /** The saved icon order, with Plume settings and the remote battery always present. */
     private fun topOrder(): List<Int> {
         val all = TOP_KEYS.values.toList()
-        // Power is not on the bar until someone adds it.
-        return keys(TopBar.parse(prefs.getString("top_bar", null), all, all - "power", "plume", "battery"))
+        // Power and restart are not on the bar until someone adds them.
+        return keys(TopBar.parse(prefs.getString("top_bar", null), all, all - "power" - "restart", "plume", "battery"))
     }
 
     /** What is really on screen: Sources stays out while the TV has no input. */
@@ -4250,6 +4252,18 @@ class MainActivity : Activity() {
         val service = HomeOverride.running
             ?: return holdMenu(findViewById(R.id.powerButton), listOf(getString(R.string.power_needs_home) to { turnOnHomeButton() }), below = true)
         Remap.powerMenu(service)
+    }
+
+    private fun restartDialog() {
+        val intent = Intent(Intent.ACTION_REBOOT)
+            .setClassName("android", "com.android.internal.app.ShutdownActivity")
+            // The system activity reads this hidden extra to show Yes/No before restarting.
+            .putExtra("android.intent.extra.KEY_CONFIRM", true)
+        try {
+            startActivity(intent)
+        } catch (e: RuntimeException) {
+            toast(getString(R.string.restart_unavailable), long = true, system = true)
+        }
     }
 
     /** Hold OK on a top-bar icon: Move, Hide (except settings and battery) and Add icon. */

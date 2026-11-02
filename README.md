@@ -167,6 +167,7 @@ Tests run against a fake `adb`, no TV needed: `sh tools/plume-install-test/run.s
 | Remap a remote key | **Plume settings → Home & remote → Remote keys → Add a key**, then press it |
 | Lock the layout | **Plume settings → PIN lock**. Forgot the PIN? **Android Settings → Apps → Plume → Clear data**. |
 | Update Plume | **Plume settings → Updates** |
+| Open the TV's restart confirmation | Hold **OK** on a top-bar icon, then **Add icon → Restart TV**. The TV must allow access to its system confirmation; Plume does not force a reboot |
 | Open the Google TV dashboard | Hold **Home** |
 
 <p align="center">

@@ -302,4 +302,6 @@
     <string name="remote_low_warning">Pile de la télécommande faible : %1$d%%</string>
     <string name="fit_all_apps">Adapter Toutes les applis à l\'écran</string>
     <string name="help_fit_all_apps">Réduit légèrement les tuiles de Toutes les applis pour garder la dernière colonne dans l\'écran. Désactivé par défaut.</string>
+    <string name="restart_tv">Redémarrer le téléviseur</string>
+    <string name="restart_unavailable">Ce téléviseur ne permet pas à Plume d\'ouvrir la confirmation de redémarrage. Utilisez les paramètres du téléviseur.</string>
 </resources>

@@ -393,4 +393,6 @@
     <string name="remote_low_warning">Remote battery low: %1$d%%</string>
     <string name="fit_all_apps">Fit All apps to screen</string>
     <string name="help_fit_all_apps">Slightly narrows the All apps tiles to keep the last column inside the screen. Off by default.</string>
+    <string name="restart_tv">Restart TV</string>
+    <string name="restart_unavailable">This TV does not allow Plume to open the restart confirmation. Restart it from the TV\'s settings.</string>
 </resources>
