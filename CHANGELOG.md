@@ -46,6 +46,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - Glass rows no longer show a grey edge after the last tile.
 - Plume starts at cold boot when it is the only Home app. Before, the TV stayed on the boot screen.
 - Continue watching shows the show you watched last first in apps such as Nuvio.
+- **Fire TV: Plume shows sooner after Home.** Android holds an app's start for 5 seconds after Home. While **Plume: Home button** is on, Plume starts with an alarm. The system sends the alarm, so the wait does not apply. Plume sets the Android setting `min_futurity` to 0 for this. Plume puts the old value back when you turn the Home button off. This needs the `WRITE_SECURE_SETTINGS` grant.
 - On Fire TV, Plume comes back when you press Home on the Plume home screen or in the Plume settings.
 - On Google TV, a notice or a sign-in screen no longer brings Plume to the front.
 - On some CVTE TVs, the Home button returns to Plume from HDMI or Live TV.
