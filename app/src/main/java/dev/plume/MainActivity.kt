@@ -388,6 +388,7 @@ class MainActivity : Activity() {
             } else {
                 ui.removeCallbacks(refreshBatteryOnResume)
                 ui.removeCallbacks(wifiSpeedTick)
+                stopWifiBlink()
             }
         }
     }
@@ -403,7 +404,7 @@ class MainActivity : Activity() {
         }
 
         override fun onLost(n: Network) {
-            ui.post { showNet(null) }
+            ui.post { if (!isDestroyed) refreshNetworkStatus() }
         }
     }
 
@@ -639,6 +640,7 @@ class MainActivity : Activity() {
             ui.removeCallbacks(weatherTick)
             ui.removeCallbacks(refreshBatteryOnResume)
             ui.removeCallbacks(wifiSpeedTick)
+            stopWifiBlink()
             ui.removeCallbacks(themeTick)
             ui.removeCallbacks(wallpaperTick)
             if (editing) endEdit()
@@ -3620,8 +3622,17 @@ class MainActivity : Activity() {
 
     private fun wifiSpeedOn() = prefs.getBoolean("wifi_link_speed", false)
 
-    private fun canPollWifiSpeed() = WifiLinkSpeed.shouldPoll(wifiSpeedOn(), resumed, wifi.visibility == View.VISIBLE,
+    private fun canPollWifiSpeed() = WifiLinkSpeed.shouldPoll(resumed, wifi.visibility == View.VISIBLE,
         getSystemService(PowerManager::class.java).isInteractive)
+
+    private var wifiSignal: Drawable? = null
+    private var wifiBlink: ValueAnimator? = null
+
+    private fun stopWifiBlink() {
+        wifiBlink?.cancel()
+        wifiBlink = null
+        wifiSignal?.alpha = 255
+    }
 
     private val wifiSpeedTick = object : Runnable {
         override fun run() {
@@ -3633,6 +3644,7 @@ class MainActivity : Activity() {
 
     private fun scheduleWifiSpeed() {
         ui.removeCallbacks(wifiSpeedTick)
+        stopWifiBlink()
         if (canPollWifiSpeed()) ui.post(wifiSpeedTick)
     }
 
@@ -3643,22 +3655,33 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION") // Live link speed polling on API 26+; no location-sensitive Wi-Fi fields are read.
     private fun showNet(caps: NetworkCapabilities?) {
+        stopWifiBlink()
         val ethernet = caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+        val connected = !ethernet && caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        val info = if (connected) try {
+            applicationContext.getSystemService(WifiManager::class.java)?.connectionInfo
+        } catch (_: SecurityException) { null } else null
+        val level = WifiStatus.signalLevel(connected, info?.rssi?.takeIf { it in -126..-1 }?.let {
+            WifiManager.calculateSignalLevel(it, 3)
+        })
+        val signal = if (ethernet) null else WifiSignalIcon(getDrawable(when (level) {
+            0 -> R.drawable.ic_wifi_low
+            1 -> R.drawable.ic_wifi_medium
+            2 -> R.drawable.ic_wifi
+            else -> R.drawable.ic_wifi_empty
+        })!!.mutate(), connected)
+        wifiSignal = signal
         val padding = dp(if (ethernet) 8 else 6)
         wifi.setPadding(padding, padding, padding, padding)
-        val showSpeed = wifiSpeedOn() && !ethernet
+        val showSpeed = wifiSpeedOn() && connected
         if (showSpeed) {
-            val connected = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            val speed = if (connected) try {
-                applicationContext.getSystemService(WifiManager::class.java)?.connectionInfo?.linkSpeed
-            } catch (_: SecurityException) { null } else null
-            val label = WifiLinkSpeed.label(WifiLinkSpeed.shown(connected, speed))
+            val label = WifiLinkSpeed.label(WifiLinkSpeed.shown(connected, info?.linkSpeed))
             val metrics = resources.displayMetrics
             wifi.setImageDrawable(WifiLinkSpeedIcon(metrics.density,
-                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, metrics), getDrawable(R.drawable.ic_wifi)!!.mutate(), label))
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, metrics), signal!!, label))
             wifi.contentDescription = getString(R.string.wifi_link_speed_value, label)
         } else {
-            wifi.setImageResource(if (ethernet) R.drawable.ic_ethernet else R.drawable.ic_wifi)
+            if (ethernet) wifi.setImageResource(R.drawable.ic_ethernet) else wifi.setImageDrawable(signal)
             wifi.contentDescription = getString(R.string.network_settings)
         }
         val width = if (showSpeed) wifi.drawable.intrinsicWidth + wifi.paddingLeft + wifi.paddingRight else dp(36)
@@ -3667,8 +3690,21 @@ class MainActivity : Activity() {
             wifi.layoutParams = wifi.layoutParams.apply { this.width = width; this.height = height }
         }
         iconShadow(wifi) // the shadow takes the new picture's shape
-        // Dim only the icon: the focus ring is the background and should stay full strength.
-        wifi.imageAlpha = if (caps == null) 90 else 255
+        if (!ethernet) wifi.contentDescription = "${wifi.contentDescription}, " + when {
+            !connected -> getString(R.string.wifi_disconnected)
+            level == null -> getString(R.string.wifi_connected)
+            else -> getString(R.string.wifi_signal, level + 1)
+        }
+        wifi.imageAlpha = 255
+        if (WifiStatus.shouldBlink(connected, ethernet, canPollWifiSpeed())) {
+            wifiBlink = ValueAnimator.ofInt(255, 40).apply {
+                duration = 800L
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                addUpdateListener { signal?.alpha = it.animatedValue as Int; wifi.invalidate() }
+                start()
+            }
+        }
     }
 
     private fun openSettings(action: String, data: Uri? = null) {

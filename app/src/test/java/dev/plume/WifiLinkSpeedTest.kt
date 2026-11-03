@@ -17,12 +17,11 @@ class WifiLinkSpeedTest {
         assertEquals("– Mbps", WifiLinkSpeed.label(null))
     }
 
-    @Test fun pollingRequiresOptInAndAVisibleAwakeLauncher() {
-        assertTrue(WifiLinkSpeed.shouldPoll(true, true, true, true))
-        assertFalse(WifiLinkSpeed.shouldPoll(false, true, true, true))
-        assertFalse(WifiLinkSpeed.shouldPoll(true, false, true, true))
-        assertFalse(WifiLinkSpeed.shouldPoll(true, true, false, true))
-        assertFalse(WifiLinkSpeed.shouldPoll(true, true, true, false))
+    @Test fun signalPollingRequiresAVisibleAwakeLauncherEvenWhenSpeedIsHidden() {
+        assertTrue(WifiLinkSpeed.shouldPoll(true, true, true))
+        assertFalse(WifiLinkSpeed.shouldPoll(false, true, true))
+        assertFalse(WifiLinkSpeed.shouldPoll(true, false, true))
+        assertFalse(WifiLinkSpeed.shouldPoll(true, true, false))
         assertEquals(10_000L, WifiLinkSpeed.REFRESH_MS)
     }
 }

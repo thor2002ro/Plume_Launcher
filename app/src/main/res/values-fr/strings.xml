@@ -171,6 +171,9 @@
     <string name="network_settings">Paramètres réseau</string>
     <string name="wifi_link_speed_option">Vitesse de liaison Wi-Fi : %1$s</string>
     <string name="wifi_link_speed_value">Paramètres réseau, vitesse de liaison Wi-Fi : %1$s</string>
+    <string name="wifi_connected">Wi-Fi connecté</string>
+    <string name="wifi_signal">Wi-Fi connecté, signal %1$d sur 3</string>
+    <string name="wifi_disconnected">Wi-Fi déconnecté ou en cours de reconnexion</string>
     <string name="all_apps">Toutes les applis</string>
     <string name="settings">Paramètres</string>
     <string name="continue_watching">Reprendre la lecture</string>

@@ -177,6 +177,7 @@ Tests run against a fake `adb`, no TV needed: `sh tools/plume-install-test/run.s
 | Update Plume | **Plume settings → Updates** |
 | Hide or restore the remote battery | Enabled by default. Hold **OK** on **Remote battery → Hide**; restore it with another icon's **Add icon → Remote battery** |
 | Show Wi-Fi link speed | Hold **OK** on **Wi-Fi**, then enable **Wi-Fi link speed**. The Mbps value updates every 10 seconds while Plume is visible |
+| Read Wi-Fi status | Green means connected. Filled levels show signal strength. A blinking empty symbol means disconnected or reconnecting |
 | Open the TV's restart confirmation or power menu | Hold **OK** on a top-bar icon, then **Add icon → Restart TV**. If Android blocks the confirmation, Plume opens the system power menu through its Home button service. Plume does not force a reboot |
 | Open the Google TV dashboard | Hold **Home** |
 

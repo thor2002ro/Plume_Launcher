@@ -195,6 +195,9 @@
     <string name="network_settings">Network settings</string>
     <string name="wifi_link_speed_option">Wi-Fi link speed: %1$s</string>
     <string name="wifi_link_speed_value">Network settings, Wi-Fi link speed: %1$s</string>
+    <string name="wifi_connected">Wi-Fi connected</string>
+    <string name="wifi_signal">Wi-Fi connected, signal %1$d of 3</string>
+    <string name="wifi_disconnected">Wi-Fi disconnected or reconnecting</string>
     <string name="all_apps">All apps</string>
     <string name="settings">Settings</string>
     <string name="continue_watching">Continue Watching</string>

@@ -15,8 +15,8 @@ internal object WifiLinkSpeed {
 
     fun label(speed: Int?) = "${speed ?: "–"} Mbps"
 
-    fun shouldPoll(enabled: Boolean, resumed: Boolean, visible: Boolean, interactive: Boolean) =
-        enabled && resumed && visible && interactive
+    fun shouldPoll(resumed: Boolean, visible: Boolean, interactive: Boolean) =
+        resumed && visible && interactive
 }
 
 internal class WifiLinkSpeedIcon(private val density: Float, private val textSize: Float,
