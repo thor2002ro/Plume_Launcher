@@ -373,4 +373,14 @@
     <string name="clock_medium">Médio</string>
     <string name="clock_large">Grande</string>
     <string name="help_clock_size">O tamanho do relógio na tela inicial.</string>
+    <string name="backup_restore">Backup e restauração</string>
+    <string name="backup_settings">Fazer backup das configurações</string>
+    <string name="restore_settings">Restaurar configurações</string>
+    <string name="help_backup_restore">Salve as configurações do Plume em um arquivo de texto ou substitua-as usando um arquivo.</string>
+    <string name="settings_backup_saved">Backup das configurações salvo.</string>
+    <string name="settings_backup_saved_downloads">O backup das configurações foi salvo em Downloads.</string>
+    <string name="settings_file_failed">O Plume não conseguiu ler ou gravar este arquivo de configurações.</string>
+    <string name="settings_restore_title">Restaurar as configurações do Plume?</string>
+    <string name="settings_restore_body">Isso substitui as configurações salvas do Plume. As configurações e permissões do Android não mudam.</string>
+    <string name="settings_restored">Configurações restauradas.</string>
 </resources>

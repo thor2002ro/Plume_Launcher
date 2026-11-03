@@ -307,4 +307,14 @@
     <string name="clock_medium">Mediano</string>
     <string name="clock_large">Grande</string>
     <string name="help_clock_size">El tamaño del reloj en Inicio.</string>
+    <string name="backup_restore">Copia de seguridad y restauración</string>
+    <string name="backup_settings">Guardar ajustes</string>
+    <string name="restore_settings">Restaurar ajustes</string>
+    <string name="help_backup_restore">Guarda los ajustes de Plume en un archivo de texto o reemplázalos desde uno.</string>
+    <string name="settings_backup_saved">Copia de seguridad guardada.</string>
+    <string name="settings_backup_saved_downloads">La copia de seguridad de los ajustes se guardó en Descargas.</string>
+    <string name="settings_file_failed">Plume no pudo leer ni escribir este archivo de ajustes.</string>
+    <string name="settings_restore_title">¿Restaurar los ajustes de Plume?</string>
+    <string name="settings_restore_body">Esto reemplaza los ajustes de Plume guardados. Los ajustes y permisos de Android no cambian.</string>
+    <string name="settings_restored">Ajustes restaurados.</string>
 </resources>

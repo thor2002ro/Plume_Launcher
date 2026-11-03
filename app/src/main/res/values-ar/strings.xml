@@ -237,4 +237,14 @@
     <string name="clock_large">كبير</string>
     <string name="help_clock_size">حجم الساعة في الشاشة الرئيسية.</string>
     <string name="section_clock_weather">الساعة والطقس</string>
+    <string name="backup_restore">النسخ الاحتياطي والاستعادة</string>
+    <string name="backup_settings">نسخ الإعدادات احتياطيًا</string>
+    <string name="restore_settings">استعادة الإعدادات</string>
+    <string name="help_backup_restore">احفظ إعدادات Plume في ملف نصي أو استبدلها من ملف.</string>
+    <string name="settings_backup_saved">تم حفظ نسخة احتياطية من الإعدادات.</string>
+    <string name="settings_backup_saved_downloads">تم حفظ النسخة الاحتياطية للإعدادات في التنزيلات.</string>
+    <string name="settings_file_failed">تعذر على Plume قراءة ملف الإعدادات هذا أو الكتابة إليه.</string>
+    <string name="settings_restore_title">هل تريد استعادة إعدادات Plume؟</string>
+    <string name="settings_restore_body">يؤدي هذا إلى استبدال إعدادات Plume المنسوخة احتياطيًا. لا تتغير إعدادات Android وأذوناته.</string>
+    <string name="settings_restored">تمت استعادة الإعدادات.</string>
 </resources>

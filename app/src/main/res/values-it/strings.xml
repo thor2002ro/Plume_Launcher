@@ -321,4 +321,14 @@
     <string name="clock_medium">Medio</string>
     <string name="clock_large">Grande</string>
     <string name="help_clock_size">Quanto è grande l’orologio nella Home.</string>
+    <string name="backup_restore">Backup e ripristino</string>
+    <string name="backup_settings">Esegui il backup delle impostazioni</string>
+    <string name="restore_settings">Ripristina impostazioni</string>
+    <string name="help_backup_restore">Salva le impostazioni di Plume in un file di testo o sostituiscile da un file.</string>
+    <string name="settings_backup_saved">Backup delle impostazioni salvato.</string>
+    <string name="settings_backup_saved_downloads">Il backup delle impostazioni è stato salvato in Download.</string>
+    <string name="settings_file_failed">Plume non ha potuto leggere o scrivere questo file di impostazioni.</string>
+    <string name="settings_restore_title">Ripristinare le impostazioni di Plume?</string>
+    <string name="settings_restore_body">Questa operazione sostituisce le impostazioni Plume salvate. Le impostazioni e le autorizzazioni Android non cambiano.</string>
+    <string name="settings_restored">Impostazioni ripristinate.</string>
 </resources>

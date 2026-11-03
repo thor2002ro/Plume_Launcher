@@ -12,6 +12,7 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -58,6 +59,7 @@ import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -634,8 +636,12 @@ class MainActivity : Activity() {
         else toast(getString(R.string.photos_permission), long = true)
     }
 
-    @Deprecated("Only used for the default-home role request and the TV's own installer")
+    @Deprecated("Used for system activities that return a result")
     override fun onActivityResult(code: Int, result: Int, data: Intent?) {
+        if (code == SETTINGS_BACKUP || code == SETTINGS_RESTORE) {
+            if (result == RESULT_OK) data?.data?.let { if (code == SETTINGS_BACKUP) writeSettingsBackup(it) else readSettingsBackup(it) }
+            return
+        }
         if (code == INSTALL_REQUEST) installerClosed()
         if (code == ROLE_REQUEST && settingsScrim.visibility == View.VISIBLE) renderSettings(R.string.default_launcher)
         if (code == ROLE_REQUEST && setupStep == 1) {
@@ -2708,6 +2714,142 @@ class MainActivity : Activity() {
 
     private var panelFrom: View? = null // focus to go back to when the panel closes
 
+    private fun backupRestore() {
+        lastSettings = R.string.backup_restore
+        showPage(getString(R.string.backup_restore), listOf(
+            page(getString(R.string.backup_settings)) { openSettingsDocument(SETTINGS_BACKUP) },
+            page(getString(R.string.restore_settings)) { openSettingsDocument(SETTINGS_RESTORE) },
+        ), crumb = getString(R.string.plume_settings)) { renderSettings(R.string.backup_restore) }
+    }
+
+    private fun settingsDocumentIntent(action: String) =
+        Intent(action).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain").apply {
+            if (action == Intent.ACTION_CREATE_DOCUMENT) putExtra(Intent.EXTRA_TITLE, SETTINGS_FILE)
+        }
+
+    @Suppress("DEPRECATION")
+    private fun settingsDocumentHandlers(action: String) = packageManager
+        .queryIntentActivities(settingsDocumentIntent(action), PackageManager.MATCH_DEFAULT_ONLY)
+        .map { it.activityInfo.name }
+
+    private fun openSettingsDocument(request: Int) {
+        val backup = request == SETTINGS_BACKUP
+        val route = settingsFileRoute(
+            backup,
+            if (backup) settingsDocumentHandlers(Intent.ACTION_CREATE_DOCUMENT) else emptyList(),
+            if (backup) emptyList() else settingsDocumentHandlers(Intent.ACTION_OPEN_DOCUMENT),
+            if (backup) emptyList() else settingsDocumentHandlers(Intent.ACTION_GET_CONTENT),
+        )
+        if (route == SettingsFileRoute.DOWNLOAD) {
+            if (Build.VERSION.SDK_INT >= 29) writeSettingsBackup(null)
+            else toast(getString(R.string.settings_file_failed), long = true)
+            return
+        }
+        if (route == SettingsFileRoute.NONE) {
+            toast(getString(R.string.settings_file_failed), long = true)
+            return
+        }
+        val action = when (route) {
+            SettingsFileRoute.CREATE -> Intent.ACTION_CREATE_DOCUMENT
+            SettingsFileRoute.OPEN -> Intent.ACTION_OPEN_DOCUMENT
+            SettingsFileRoute.GET -> Intent.ACTION_GET_CONTENT
+            else -> return
+        }
+        try {
+            startActivityForResult(settingsDocumentIntent(action), request)
+        } catch (_: ActivityNotFoundException) {
+            toast(getString(R.string.settings_file_failed), long = true)
+        }
+    }
+
+    private fun writeSettingsBackup(uri: Uri?) {
+        val values = prefs.all
+        io.execute {
+            var created: Uri? = null
+            val saved = runCatching {
+                val inserted = if (uri == null && Build.VERSION.SDK_INT >= 29) contentResolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, SETTINGS_FILE)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    },
+                ) else null
+                created = inserted
+                val destination = uri ?: inserted ?: throw IOException("Could not create settings backup")
+                val text = SettingsBackup.encode(values)
+                val stream = contentResolver.openOutputStream(destination, "wt") ?: throw IOException("No output stream")
+                stream.bufferedWriter(Charsets.UTF_8).use { it.write(text) }
+                if (created != null) require(contentResolver.update(
+                    destination,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null,
+                ) == 1) { "Could not publish settings backup" }
+            }.isSuccess
+            if (!saved) created?.let { contentResolver.delete(it, null, null) }
+            ui.post { if (!isDestroyed) toast(getString(when {
+                !saved -> R.string.settings_file_failed
+                created != null -> R.string.settings_backup_saved_downloads
+                else -> R.string.settings_backup_saved
+            }), long = !saved) }
+        }
+    }
+
+    private fun readSettingsBackup(uri: Uri) {
+        io.execute {
+            val restored = runCatching {
+                val stream = contentResolver.openInputStream(uri) ?: throw IOException("No input stream")
+                stream.bufferedReader(Charsets.UTF_8).use { SettingsBackup.decode(it) }
+            }
+            ui.post {
+                if (isDestroyed) return@post
+                restored.fold(::confirmSettingsRestore) { toast(getString(R.string.settings_file_failed), long = true) }
+            }
+        }
+    }
+
+    private fun confirmSettingsRestore(restored: Map<String, Any>) {
+        homePopup(0, getString(R.string.settings_restore_title), getString(R.string.settings_restore_body), null,
+            getString(R.string.cancel) to { setupDialog?.dismiss() },
+            getString(R.string.restore_settings) to {
+                setupDialog?.dismiss()
+                applySettingsRestore(restored)
+            })
+    }
+
+    private fun applySettingsRestore(restored: Map<String, Any>) {
+        when (SettingsBackup.restore(prefs.all, restored, ::replaceSettings)) {
+            SettingsBackup.RestoreResult.FAILED -> return toast(getString(R.string.settings_file_failed), long = true)
+            SettingsBackup.RestoreResult.ROLLBACK_FAILED -> {
+                android.util.Log.e("Plume", "Settings restore and rollback could not be persisted")
+                Remap.reset()
+                HomeOverride.running?.applyKeyFilter()
+                toast(getString(R.string.settings_file_failed), long = true, system = true)
+                return recreate()
+            }
+            SettingsBackup.RestoreResult.RESTORED -> Unit
+        }
+        Remap.reset()
+        HomeOverride.running?.applyKeyFilter()
+        toast(getString(R.string.settings_restored), system = true)
+        recreate()
+    }
+
+    private fun replaceSettings(values: Map<String, Any>): Boolean {
+        val edit = prefs.edit().clear()
+        for ((key, value) in values) when (value) {
+            is String -> edit.putString(key, value)
+            is Set<*> -> edit.putStringSet(key, value.map { it as String }.toSet())
+            is Boolean -> edit.putBoolean(key, value)
+            is Int -> edit.putInt(key, value)
+            is Long -> edit.putLong(key, value)
+            is Float -> edit.putFloat(key, value)
+        }
+        return edit.commit()
+    }
+
     /**
      * Plume settings, as a short list of sections that each open a page. [at] is the string id of the row to
      * focus: a row inside a section opens that section on it; a section or a top-level row focuses it in the
@@ -3004,6 +3146,8 @@ class MainActivity : Activity() {
             Triple(R.string.lock_layout, rows[R.string.lock_layout]!!, RowStyle(R.drawable.ms_lock, help = getString(R.string.lock_note))) +
             Triple(R.string.updates, rows[R.string.updates]!!.let { (t, _, a) -> page(t, "›", a) },
                 RowStyle(R.drawable.ms_system_update, rows[R.string.updates]!!.second, help = getString(R.string.help_updates))) +
+            Triple(R.string.backup_restore, page(getString(R.string.backup_restore), "›") { backupRestore() },
+                RowStyle(R.drawable.ms_folder, help = getString(R.string.help_backup_restore))) +
             listOfNotNull(if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) null
                 else Triple(R.string.preview_home_setup, page(getString(R.string.preview_home_setup)) { closeLauncherSettings(); previewHomeSetup() },
                     RowStyle(R.drawable.ms_code)))
@@ -6350,6 +6494,9 @@ class MainActivity : Activity() {
         const val WRITE_SECURE = "android.permission.WRITE_SECURE_SETTINGS"
         const val ROLE_REQUEST = 2
         const val INSTALL_REQUEST = 4
+        const val SETTINGS_BACKUP = 5
+        const val SETTINGS_RESTORE = 6
+        const val SETTINGS_FILE = "plume-settings.txt"
         val ROW_ALIGN = linkedMapOf( // setting -> its name, and the row's gravity in the scroller
             "left" to (R.string.align_left to Gravity.START),
             "centre" to (R.string.align_centre to Gravity.CENTER_HORIZONTAL),

@@ -32,6 +32,7 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **Edit the top bar.** Hold **OK** on an icon at the top of the home screen. Select **Move**, **Hide** or **Add icon**. **Plume settings** stays on the bar.
 - **Power menu icon.** Hold **OK** on a top-bar icon and select **Add icon**, then **Power menu**. The icon opens the Android power menu.
 - **Remote battery.** The top bar shows your Bluetooth remote's battery by default. Hold **OK** on its icon to hide it or change the alert; use **Add icon → Remote battery** to restore it.
+- **Settings backup.** Select **Plume settings → Backup & restore** to save your Plume settings to a text file. Restore the file to replace them.
 - **More apps.** Plume shows installed apps that do not have a TV launcher entry. Some apps need touch or a mouse.
 - Map a remote key to **Plume All apps** to open the full app grid from another app.
 

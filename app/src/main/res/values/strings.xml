@@ -220,6 +220,16 @@
     <string name="help_remote_home">Make Home open Plume, and change what the buttons on your remote do.</string>
     <string name="help_lock">A PIN that stops other people from changing your home screen.</string>
     <string name="help_updates">Plume checks for a new version once a day. Install it here.</string>
+    <string name="backup_restore">Backup &amp; restore</string>
+    <string name="backup_settings">Back up settings</string>
+    <string name="restore_settings">Restore settings</string>
+    <string name="help_backup_restore">Save Plume settings to a text file, or replace them from one.</string>
+    <string name="settings_backup_saved">Settings backup saved.</string>
+    <string name="settings_backup_saved_downloads">Settings backup saved in Downloads.</string>
+    <string name="settings_file_failed">Plume could not read or write this settings file.</string>
+    <string name="settings_restore_title">Restore Plume settings?</string>
+    <string name="settings_restore_body">This replaces your backed-up Plume settings. Android settings and permissions do not change.</string>
+    <string name="settings_restored">Settings restored.</string>
     <string name="help_finish_setup">Home still opens the TV\'s own home screen. Set it to open Plume.</string>
     <string name="help_location">For the weather, and for sunrise and sunset in Auto. Automatic finds it from your internet address.</string>
     <string name="help_rearrange">Move the apps in the row. You can also hold OK on an app.</string>

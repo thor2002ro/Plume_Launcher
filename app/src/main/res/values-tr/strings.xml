@@ -221,4 +221,14 @@
     <string name="clock_large">Büyük</string>
     <string name="help_clock_size">Ana ekrandaki saatin boyutu.</string>
     <string name="section_clock_weather">Saat ve hava durumu</string>
+    <string name="backup_restore">Yedekleme ve geri yükleme</string>
+    <string name="backup_settings">Ayarları yedekle</string>
+    <string name="restore_settings">Ayarları geri yükle</string>
+    <string name="help_backup_restore">Plume ayarlarını bir metin dosyasına kaydedin veya bir dosyadan değiştirin.</string>
+    <string name="settings_backup_saved">Ayar yedeği kaydedildi.</string>
+    <string name="settings_backup_saved_downloads">Ayar yedeği İndirilenler\'e kaydedildi.</string>
+    <string name="settings_file_failed">Plume bu ayar dosyasını okuyamadı veya yazamadı.</string>
+    <string name="settings_restore_title">Plume ayarları geri yüklensin mi?</string>
+    <string name="settings_restore_body">Bu işlem yedeklenen Plume ayarlarınızın yerini alır. Android ayarları ve izinleri değişmez.</string>
+    <string name="settings_restored">Ayarlar geri yüklendi.</string>
 </resources>
