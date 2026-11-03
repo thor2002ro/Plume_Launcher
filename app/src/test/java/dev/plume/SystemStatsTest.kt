@@ -131,13 +131,9 @@ class SystemStatsTest {
         assertEquals(60f, history.ram.last()!!, 0.001f)
     }
 
-    @Test fun coreViewAddsSpaceWithoutTakingWidthFromTheHistoryGraphs() {
-        assertEquals(136f, systemStatsGraphWidthDp(116f), 0f)
-        assertEquals(160f, systemStatsGraphWidthDp(160f), 0f)
-        assertEquals(146f, systemStatsWidthDp(SystemStatsMode.DETAILED, cores = false, clockWidthDp = 116f), 0f)
-        assertEquals(184f, systemStatsWidthDp(SystemStatsMode.DETAILED, cores = true, clockWidthDp = 116f), 0f)
-        assertEquals(170f, systemStatsWidthDp(SystemStatsMode.DETAILED, cores = false, clockWidthDp = 160f), 0f)
-        assertEquals(208f, systemStatsWidthDp(SystemStatsMode.DETAILED, cores = true, clockWidthDp = 160f), 0f)
-        assertEquals(146f, systemStatsWidthDp(SystemStatsMode.MINIMAL, cores = true, clockWidthDp = 160f), 0f)
+    @Test fun detailedStatsKeepOneStableWidth() {
+        assertEquals(146f, systemStatsWidthDp(SystemStatsMode.DETAILED, clockWidthDp = 116f), 0f)
+        assertEquals(160f, systemStatsWidthDp(SystemStatsMode.DETAILED, clockWidthDp = 160f), 0f)
+        assertEquals(146f, systemStatsWidthDp(SystemStatsMode.MINIMAL, clockWidthDp = 160f), 0f)
     }
 }
