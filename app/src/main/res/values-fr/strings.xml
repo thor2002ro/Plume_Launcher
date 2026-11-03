@@ -298,6 +298,16 @@
     <string name="clock_medium">Moyenne</string>
     <string name="clock_large">Grande</string>
     <string name="help_clock_size">La taille de l’horloge sur l’accueil.</string>
+    <string name="system_stats">Statistiques système</string>
+    <string name="system_stats_minimal">Minimales</string>
+    <string name="system_stats_detailed">Détaillées</string>
+    <string name="help_system_stats">Affiche le processeur et la RAM libre sous l’horloge. Le mode détaillé ajoute des graphiques sur 60 secondes et les cœurs disponibles.</string>
+    <string name="system_stats_cpu">CPU %1$s</string>
+    <string name="system_stats_app_cpu">CPU de Plume %1$s</string>
+    <string name="system_stats_ram">RAM %1$s / %2$s libres</string>
+    <string name="system_stats_description">CPU %1$s, RAM %2$s libres sur %3$s</string>
+    <string name="system_stats_description_app">CPU de Plume %1$s, RAM %2$s libres sur %3$s</string>
+    <string name="system_stats_core">Cœur %1$d %2$s</string>
     <string name="section_clock_weather">Horloge et météo</string>
     <string name="remote_battery">Pile de la télécommande</string>
     <string name="remote_device">Appareils pour la pile : %1$s</string>

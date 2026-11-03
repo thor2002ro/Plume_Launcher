@@ -390,6 +390,16 @@
     <string name="clock_medium">Medium</string>
     <string name="clock_large">Large</string>
     <string name="help_clock_size">How big the clock is on Home.</string>
+    <string name="system_stats">System stats</string>
+    <string name="system_stats_minimal">Minimal</string>
+    <string name="system_stats_detailed">Detailed</string>
+    <string name="help_system_stats">Shows CPU and free RAM under the clock. Detailed adds 60-second graphs and per-core bars when available.</string>
+    <string name="system_stats_cpu">CPU %1$s</string>
+    <string name="system_stats_app_cpu">App CPU %1$s</string>
+    <string name="system_stats_ram">RAM %1$s / %2$s free</string>
+    <string name="system_stats_description">CPU %1$s, RAM %2$s of %3$s free</string>
+    <string name="system_stats_description_app">App CPU %1$s, RAM %2$s of %3$s free</string>
+    <string name="system_stats_core">Core %1$d %2$s</string>
     <string name="remote_battery">Remote battery</string>
     <string name="remote_device">Battery devices: %1$s</string>
     <string name="remote_device_auto">Automatic (lowest battery)</string>

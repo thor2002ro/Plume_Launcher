@@ -311,6 +311,7 @@ class MainActivity : Activity() {
 
     private val prefs by lazy { getSharedPreferences("home", MODE_PRIVATE) }
     private val io = Executors.newSingleThreadExecutor()
+    private val systemStatsIo = newSystemStatsExecutor()
     /** Small wallpaper pictures for the settings grids, by choice and size; 8 MB holds every built-in twice over. */
     private val thumbCache = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
@@ -357,6 +358,9 @@ class MainActivity : Activity() {
     private val allAppsRequest by lazy { (lastNonConfigurationInstance as? AllAppsRequest) ?: AllAppsRequest() }
     private var startupUi: Runnable? = null
     private lateinit var wifi: ImageView
+    private val systemStats by lazy { findViewById<SystemStatsView>(R.id.systemStats) }
+    private val systemStatsSampler by lazy { SystemStatsSampler(applicationContext) }
+    private var systemStatsRun = 0
     private lateinit var glass: GlassLayer // paints the blurred wallpaper under glass tiles
     private lateinit var videoWallpaper: VideoWallpaper
 
@@ -385,10 +389,12 @@ class MainActivity : Activity() {
             if (i.action == Intent.ACTION_SCREEN_ON && resumed) {
                 scheduleRemoteBattery()
                 scheduleWifiSpeed()
+                scheduleSystemStats()
             } else {
                 ui.removeCallbacks(refreshBatteryOnResume)
                 ui.removeCallbacks(wifiSpeedTick)
                 stopWifiBlink()
+                stopSystemStats()
             }
         }
     }
@@ -442,6 +448,9 @@ class MainActivity : Activity() {
         allApps = findViewById(R.id.allApps)
         allAppsGrid = findViewById(R.id.allAppsGrid)
         wifi = findViewById(R.id.wifi)
+        findViewById<View>(R.id.clock).addOnLayoutChangeListener { _, left, _, right, _, _, _, _, _ ->
+            systemStats.clockWidthPx = right - left
+        }
         // A new install starts on Arctic Aurora, light, with Frosted glass; an update keeps what it has.
         val info = packageManager.getPackageInfo(packageName, 0)
         if (info.firstInstallTime == info.lastUpdateTime && !prefs.contains("wp_light") && !prefs.contains("wp_dark"))
@@ -460,6 +469,7 @@ class MainActivity : Activity() {
         }
         applyTopBar()
         applyTheme()
+        applySystemStatsMode()
         setUpTitle() // after the theme: the pill is styled with the theme's card colours
         glassShown = glassLook() to null // the tiles are built for this look; only the blur is still to come
         loadWallpaper()
@@ -587,6 +597,7 @@ class MainActivity : Activity() {
         updateFeatured()
         scheduleRemoteBattery()
         scheduleWifiSpeed()
+        scheduleSystemStats()
         // Gallery chosen but its paintings missing (updated from a version that bundled them): fetch them.
         if (galleryOn() && photoScreensaver() == null && !aerialScreensaverOn() && !paintingsReady(this)) downloadPaintings {}
         checkUpdate(force = false)
@@ -641,6 +652,7 @@ class MainActivity : Activity() {
             ui.removeCallbacks(refreshBatteryOnResume)
             ui.removeCallbacks(wifiSpeedTick)
             stopWifiBlink()
+            stopSystemStats()
             ui.removeCallbacks(themeTick)
             ui.removeCallbacks(wallpaperTick)
             if (editing) endEdit()
@@ -686,6 +698,7 @@ class MainActivity : Activity() {
             io.shutdownNow()
             posterIo.shutdownNow()
         }
+        systemStatsIo.shutdownNow()
         super.onDestroy()
     }
 
@@ -1184,6 +1197,7 @@ class MainActivity : Activity() {
             findViewById<TextView>(id).setTextColor(fg)
         }
         iconInk = fg
+        systemStats.ink = fg
         for (v in topIcons()) v.setColorFilter(if (v.isFocused) fg else iconInk)
         watchInk = fg
         appsInk = fg
@@ -1205,8 +1219,9 @@ class MainActivity : Activity() {
 
     private fun fitInk() {
         val top = listOf(R.id.clock, R.id.date, R.id.weather, R.id.featured).map { findViewById<TextView>(it) }
-        val topInk = inkBehind(top)
+        val topInk = inkBehind(top + systemStats)
         for (v in top) ink(v, topInk, fade = true)
+        systemStats.ink = topInk
         val icons = topIcons()
         iconInk = inkBehind(icons)
         for (v in icons) {
@@ -2699,6 +2714,7 @@ class MainActivity : Activity() {
         val sort = prefs.getString("sort", "manual")!!
         val hidden = prefs.getStringSet("hidden_watch", emptySet())!!.size
         val weather = prefs.getString("weather", "off")!!
+        val stats = systemStatsMode()
         val unit = if (weather == "off") prefs.getString("wx_unit", "c")!! else weather
         val cwOff = prefs.getStringSet("cw_off", emptySet())!!.count { pkg -> apps.any { it.pkg == pkg } } // uninstalled ones don't count
         val rowHidden = rowHiddenSet().count { pkg -> apps.any { it.pkg == pkg } }
@@ -2718,6 +2734,13 @@ class MainActivity : Activity() {
                 findViewById<TextView>(R.id.clock).typeface = clockFace()
                 findViewById<View>(R.id.clock).post { fitInk() } // the clock now covers other pixels
                 renderSettings(R.string.clock_style)
+            },
+            R.string.system_stats to { d ->
+                val mode = SystemStatsMode.entries.toList().step(systemStatsMode(), d)
+                prefs.edit().putString("system_stats", mode.key).apply()
+                applySystemStatsMode()
+                scheduleSystemStats()
+                renderSettings(R.string.system_stats)
             },
             R.string.icon_style to { d ->
                 prefs.edit().putString("icon_style", ICON_STYLES.keys.toList().step(iconStyle(), d)).apply()
@@ -2832,6 +2855,11 @@ class MainActivity : Activity() {
             R.string.clock_style to Triple(getString(R.string.clock_style), getString(CLOCK_STYLES.getValue(prefs.getString("clock_style", "light")!!))) {
                 steps[R.string.clock_style]!!(1)
             },
+            R.string.system_stats to Triple(getString(R.string.system_stats), getString(when (stats) {
+                SystemStatsMode.OFF -> R.string.off
+                SystemStatsMode.MINIMAL -> R.string.system_stats_minimal
+                SystemStatsMode.DETAILED -> R.string.system_stats_detailed
+            })) { steps[R.string.system_stats]!!(1) },
             // "weather" is off/c/f as before; "wx_unit" keeps the unit while it's off.
             R.string.weather to Triple(getString(R.string.weather), toggle(weather != "off")) {
                 if (weather == "off") prefs.edit().putString("weather", unit).apply()
@@ -2898,8 +2926,11 @@ class MainActivity : Activity() {
             // "When hidden" only means something once the row can hide.
             Triple(R.string.bottom_row, "${rowName()} · ${rows[R.string.show_row]!!.second}", listOfNotNull(R.string.show_row, R.string.apps_when_hidden.takeIf { rowShow() != "always" },
                 R.string.row_name, R.string.show_icons, R.string.cw_apps, R.string.cw_channels, R.string.cards_rows, R.string.restore_hidden)),
-            Triple(R.string.section_clock_weather, if (weather == "off") on(false) else "${rows[R.string.weather_units]!!.second} · ${prefs.getString("geo_city", null) ?: rows[R.string.weather_location]!!.second}",
-                listOf(R.string.clock_style, R.string.clock_size, R.string.weather, R.string.weather_units, R.string.weather_location)),
+            Triple(R.string.section_clock_weather, listOfNotNull(
+                rows[R.string.system_stats]!!.second.takeIf { stats != SystemStatsMode.OFF },
+                "${rows[R.string.weather_units]!!.second} · ${prefs.getString("geo_city", null) ?: rows[R.string.weather_location]!!.second}".takeIf { weather != "off" },
+            ).ifEmpty { listOf(on(false)) }.joinToString(" · "),
+                listOf(R.string.clock_style, R.string.clock_size, R.string.system_stats, R.string.weather, R.string.weather_units, R.string.weather_location)),
             Triple(R.string.section_screensaver, rows[R.string.screensaver]!!.second, listOf(R.string.screensaver, R.string.test_screensaver, R.string.screensaver_timing)),
             // Home app is Android TV's own way (Google TV and Fire OS keep their home); Fire OS never passes keys to us, so no smooth volume there.
             Triple(R.string.section_remote_home, if (homeSetUp()) getString(R.string.home_button) else on(false),
@@ -2935,6 +2966,7 @@ class MainActivity : Activity() {
                 R.string.weather_units to listOf("°C" to null, "°F" to null),
                 R.string.clock_style to CLOCK_STYLES.values.map { getString(it) to null },
                 R.string.clock_size to CLOCK_SIZES.values.map { getString(it) to null },
+                R.string.system_stats to listOf(R.string.off, R.string.system_stats_minimal, R.string.system_stats_detailed).map { getString(it) to null },
             )
             val styles = keys.map { k ->
                 val cost = k == R.string.smooth_volume && prefs.getBoolean("smooth_volume", false)
@@ -3621,6 +3653,55 @@ class MainActivity : Activity() {
     }
 
     private fun wifiSpeedOn() = prefs.getBoolean("wifi_link_speed", false)
+
+    private fun systemStatsMode() = SystemStatsMode.from(prefs.getString("system_stats", "off"))
+
+    private fun applySystemStatsMode() {
+        systemStats.mode = systemStatsMode()
+        systemStats.ink = fg
+        systemStats.post { fitInk() }
+    }
+
+    private fun canSampleSystemStats() = shouldSampleSystemStats(
+        resumed,
+        systemStats.visibility == View.VISIBLE,
+        getSystemService(PowerManager::class.java).isInteractive,
+        systemStats.mode,
+    )
+
+    private val systemStatsTick = object : Runnable {
+        override fun run() {
+            val run = systemStatsRun
+            if (!canSampleSystemStats()) return
+            systemStatsIo.execute {
+                val sample = systemStatsSampler.sample()
+                ui.post {
+                    if (run != systemStatsRun || isDestroyed || !canSampleSystemStats()) return@post
+                    systemStats.show(sample)
+                    ui.postDelayed(this, SYSTEM_STATS_REFRESH_MS)
+                }
+            }
+        }
+    }
+
+    private fun scheduleSystemStats() {
+        val run = ++systemStatsRun
+        ui.removeCallbacks(systemStatsTick)
+        systemStats.clear()
+        if (!canSampleSystemStats()) return
+        systemStatsIo.execute {
+            systemStatsSampler.reset()
+            ui.post {
+                if (run == systemStatsRun && !isDestroyed && canSampleSystemStats()) ui.post(systemStatsTick)
+            }
+        }
+    }
+
+    private fun stopSystemStats() {
+        systemStatsRun++
+        ui.removeCallbacks(systemStatsTick)
+        systemStats.clear()
+    }
 
     private fun canPollWifiSpeed() = WifiLinkSpeed.shouldPoll(resumed, wifi.visibility == View.VISIBLE,
         getSystemService(PowerManager::class.java).isInteractive)
@@ -6295,7 +6376,7 @@ class MainActivity : Activity() {
             R.string.show_row to R.drawable.ms_visibility, R.string.apps_when_hidden to R.drawable.ms_vertical_align_bottom, R.string.row_name to R.drawable.ms_edit,
             R.string.show_icons to R.drawable.ms_badge, R.string.cw_apps to R.drawable.ms_widgets, R.string.cw_channels to R.drawable.ms_podcasts,
             R.string.restore_hidden to R.drawable.ms_visibility_off,
-            R.string.clock_style to R.drawable.ms_schedule, R.string.clock_size to R.drawable.ms_format_size, R.string.weather to R.drawable.ms_partly_cloudy_day, R.string.weather_units to R.drawable.ms_thermostat, R.string.weather_location to R.drawable.ms_location_on,
+            R.string.clock_style to R.drawable.ms_schedule, R.string.clock_size to R.drawable.ms_format_size, R.string.system_stats to R.drawable.ms_badge, R.string.weather to R.drawable.ms_partly_cloudy_day, R.string.weather_units to R.drawable.ms_thermostat, R.string.weather_location to R.drawable.ms_location_on,
             R.string.screensaver to R.drawable.ms_bedtime, R.string.test_screensaver to R.drawable.ms_play_circle, R.string.screensaver_timing to R.drawable.ms_timer,
             R.string.home_button to R.drawable.ms_home, R.string.default_launcher to R.drawable.ms_home_app_logo, R.string.smooth_volume to R.drawable.ms_volume_up,
             R.string.section_keys to R.drawable.ms_keyboard, R.string.setup_home to R.drawable.ms_restart_alt,
@@ -6310,7 +6391,7 @@ class MainActivity : Activity() {
             R.string.section_style to R.string.help_style, R.string.section_clock_weather to R.string.help_clock_weather,
             R.string.theme to R.string.help_theme, R.string.glass to R.string.help_glass, R.string.app_animations to R.string.help_app_animations,
             R.string.app_names to R.string.help_app_names, R.string.row_position to R.string.help_row_position, R.string.show_row to R.string.help_show_row,
-            R.string.clock_style to R.string.help_clock_style, R.string.clock_size to R.string.help_clock_size, R.string.weather to R.string.help_weather, R.string.weather_units to R.string.help_units, R.string.screensaver to R.string.help_screensaver_pick,
+            R.string.clock_style to R.string.help_clock_style, R.string.clock_size to R.string.help_clock_size, R.string.system_stats to R.string.help_system_stats, R.string.weather to R.string.help_weather, R.string.weather_units to R.string.help_units, R.string.screensaver to R.string.help_screensaver_pick,
             R.string.test_screensaver to R.string.help_preview, R.string.folder_photo_changes to R.string.help_photo_every,
             R.string.section_app_row to R.string.help_apps_row, R.string.bottom_row to R.string.help_shows_row,
             R.string.section_screensaver to R.string.help_screensaver, R.string.section_remote_home to R.string.help_remote_home,
