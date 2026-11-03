@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aradhyas8/Plume_Launcher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/aradhyas8/Plume_Launcher?label=release"></a>
+  <a href="https://github.com/thor2002ro/Plume_Launcher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/thor2002ro/Plume_Launcher?label=release"></a>
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3ddc84">
   <img alt="APK size" src="https://img.shields.io/badge/APK-0.4%20MB-blue">
-  <a href="https://github.com/aradhyas8/Plume_Launcher/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/aradhyas8/Plume_Launcher/total"></a>
-  <a href="LICENSE"><img alt="GPL-3.0 License" src="https://img.shields.io/github/license/aradhyas8/Plume_Launcher"></a>
+  <a href="https://github.com/thor2002ro/Plume_Launcher/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/thor2002ro/Plume_Launcher/total"></a>
+  <a href="LICENSE"><img alt="GPL-3.0 License" src="https://img.shields.io/github/license/thor2002ro/Plume_Launcher"></a>
 </p>
 
 <p align="center">
@@ -38,6 +38,17 @@
 </table>
 
 Plume replaces the cluttered stock home screen with the two things you actually use: your apps and what you were watching. No ads, no sponsored rows, no account and no tracking.
+
+> [!NOTE]
+> This is [thor2002ro's fork](https://github.com/thor2002ro/Plume_Launcher) of the [original Plume Launcher](https://github.com/aradhyas8/Plume_Launcher). It keeps the upstream design and adds the features below.
+
+## Added in this fork
+
+- **Safer Home setup.** Test native Home with other launchers still enabled, use faster Fire TV Home handling, or replace Google TV Home with a reversible adb setup.
+- **More top-bar information.** Show one or more remote batteries, Wi-Fi signal and link speed, or optional CPU and RAM usage.
+- **More controls.** Add restart or power actions, map a remote key to **Plume All apps**, and fit the full app grid inside the screen.
+- **Flexible shows rows.** Mix all sources or browse them by title or channel.
+- **Backup and variety.** Back up and restore settings, or change to a random wallpaper each day.
 
 ## Highlights
 
@@ -69,7 +80,7 @@ Measured on a Hisense Google TV (Android 12, 1.8 GB RAM):
 
 You need Android TV or Google TV on **Android 8.0 or newer**.
 
-1. Install the latest APK from [Releases](https://github.com/aradhyas8/Plume_Launcher/releases/latest):
+1. Install the latest APK from [Releases](https://github.com/thor2002ro/Plume_Launcher/releases/latest):
    - **Downloader app:** enter code **`2125356`**. It always points to the latest release.
    - **USB drive:** copy the APK over and open it with a file manager.
    - **adb:** `adb install Plume-<version>.apk`
@@ -258,7 +269,7 @@ Google TV hides third-party screensavers from its own settings, so Plume needs t
 ## Building from source
 
 ```sh
-git clone https://github.com/aradhyas8/Plume_Launcher.git
+git clone https://github.com/thor2002ro/Plume_Launcher.git
 cd Plume_Launcher
 ./gradlew assembleRelease
 ```
