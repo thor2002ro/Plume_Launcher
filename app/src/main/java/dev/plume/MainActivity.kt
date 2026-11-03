@@ -2357,7 +2357,7 @@ class MainActivity : Activity() {
     private fun scheduleRemoteBattery() {
         updateBatteryIcon()
         ui.removeCallbacks(refreshBatteryOnResume)
-        ui.postDelayed(refreshBatteryOnResume, 5_000L)
+        ui.postDelayed(refreshBatteryOnResume, RemoteBattery.resumeDelay(remoteBatteryStarted))
     }
 
     private fun updateBatteryIcon() {
@@ -2372,6 +2372,7 @@ class MainActivity : Activity() {
      * permission the first time on Android 12 and newer. Before that the permission is granted at install.
      */
     private fun refreshRemoteBattery(force: Boolean = false) {
+        remoteBatteryStarted = true
         if (force) ui.removeCallbacks(refreshBatteryOnResume)
         if (R.id.batteryButton !in shownTop()) return
         if (!RemoteBattery.allowed(this)) {
@@ -6342,6 +6343,7 @@ class MainActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private companion object {
+        var remoteBatteryStarted = false // process cold start only; Activity recreation is a later resume
         var fakeDevice: String? = null // debug builds: see fakeSetup()
         var fakeSdk = 0
         const val TV_LISTINGS = "android.permission.READ_TV_LISTINGS"

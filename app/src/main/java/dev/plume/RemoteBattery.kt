@@ -28,8 +28,9 @@ import java.util.UUID
  *  2. the input device's battery state (Android 12 and newer: gamepads, some HID remotes);
  *  3. the device itself, when it offers the standard Bluetooth LE Battery Service.
  * A remote that offers none of these (an infrared remote, a radio remote with a USB dongle, a remote with a battery
- * service of its own making) has no icon level: the icon shows a dash. Home requests a short read five seconds after
- * resuming or waking, or when the icon is selected. Nothing is read without the permission.
+ * service of its own making) has no icon level: the icon shows a dash. Home requests a short read immediately after
+ * first start, five seconds after later resumes or wakes, or when the icon is selected. Nothing is read without the
+ * permission.
  */
 internal object RemoteBattery {
     private val BATTERY = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
@@ -60,6 +61,8 @@ internal object RemoteBattery {
 
     /** Keep the last successful level until a read fails; a failed read shows a dash until the next success. */
     fun shown(level: Int?, failed: Boolean) = level.takeUnless { failed }
+
+    fun resumeDelay(started: Boolean) = if (started) 5_000L else 0L
 
     /** Whether a read is in progress. */
     fun isBusy() = busy

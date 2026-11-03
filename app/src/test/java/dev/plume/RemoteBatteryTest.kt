@@ -49,4 +49,9 @@ class RemoteBatteryTest {
         assertEquals(70, RemoteBattery.shown(70, failed = false))
         assertEquals(null, RemoteBattery.shown(null, failed = false))
     }
+
+    @Test fun firstStartReadsImmediatelyAndLaterResumesWaitFiveSeconds() {
+        assertEquals(0L, RemoteBattery.resumeDelay(started = false))
+        assertEquals(5_000L, RemoteBattery.resumeDelay(started = true))
+    }
 }
