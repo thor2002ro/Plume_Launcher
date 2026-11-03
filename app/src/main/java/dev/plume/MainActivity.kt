@@ -390,6 +390,7 @@ class MainActivity : Activity() {
                 scheduleRemoteBattery()
                 scheduleWifiSpeed()
                 scheduleSystemStats()
+                DailyRandom.refresh(applicationContext, prefs)
             } else {
                 ui.removeCallbacks(refreshBatteryOnResume)
                 ui.removeCallbacks(wifiSpeedTick)
@@ -603,6 +604,8 @@ class MainActivity : Activity() {
         checkUpdate(force = false)
         Bing.onChanged = bingChanged
         Bing.refresh(applicationContext, prefs)
+        DailyRandom.onChanged = dailyRandomChanged
+        DailyRandom.refresh(applicationContext, prefs)
         ui.post { updateBadge() } // after layout, so the icon has its size
         showRequestedAllApps()
     }
@@ -684,6 +687,7 @@ class MainActivity : Activity() {
         if (ready) {
             videoWallpaper.clear()
             if (Bing.onChanged === bingChanged) Bing.onChanged = null
+            if (DailyRandom.onChanged === dailyRandomChanged) DailyRandom.onChanged = null
             unregisterReceiver(packageReceiver)
             unregisterReceiver(batteryScreenReceiver)
             applicationContext.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(net)
@@ -1337,6 +1341,7 @@ class MainActivity : Activity() {
         listOf(plainWallpaper(forDark).let { wallpaperName(it) to it }) +
             BUNDLED_WALLPAPERS.keys.map { wallpaperName("res:$it") to "res:$it" } +
             (wallpaperName(Bing.CHOICE) to Bing.CHOICE) +
+            (wallpaperName(DailyRandom.CHOICE) to DailyRandom.CHOICE) +
             (wallpaperName(ShowsWall.CHOICE) to ShowsWall.CHOICE) +
             (wallpaperDir()?.listFiles { f -> f.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }
                 ?.sortedBy { it.name }?.map { it.nameWithoutExtension to "file:${it.name}" } ?: emptyList()) +
@@ -1502,6 +1507,7 @@ class MainActivity : Activity() {
 
     private fun wallpaperName(choice: String) = when {
         choice == Bing.CHOICE -> getString(R.string.bing_daily)
+        choice == DailyRandom.CHOICE -> getString(R.string.daily_random)
         choice == ShowsWall.CHOICE -> getString(R.string.shows_wallpaper)
         choice.startsWith("video:") -> videoScenes(this).firstOrNull { "video:${it.file}" == choice }?.name
             ?: choice.removePrefix("video:").substringBeforeLast('.')
@@ -1710,6 +1716,7 @@ class MainActivity : Activity() {
         }
         return when {
             choice == Bing.CHOICE -> fitWallpaper { Bing.file(this).inputStream() }
+            choice == DailyRandom.CHOICE -> fitWallpaper { DailyRandom.file(this, prefs).inputStream() }
             choice == ShowsWall.CHOICE -> fitWallpaper { ShowsWall.file(this).inputStream() }
             choice.startsWith("pack:") -> fitWallpaper { File(packDir(), choice.removePrefix("pack:")).inputStream() }
             choice.startsWith("folder:") -> {
@@ -1751,7 +1758,7 @@ class MainActivity : Activity() {
                 Tile(getString(R.string.surprise_me), icon = R.drawable.ms_shuffle, help = R.string.help_surprise) { surpriseVideo(forDark) },
                 scenes.firstOrNull { "video:${it.file}" == current }?.let { Tile(it.name, current) { previewWallpaper(current) } },
             ) + kinds + Tile(getString(R.string.manage_videos), icon = R.drawable.ms_edit, help = R.string.help_manage_videos) { pickVideoWallpaper(forDark) },
-            R.string.wp_group_more to listOf(pick(Bing.CHOICE), pick(ShowsWall.CHOICE),
+            R.string.wp_group_more to listOf(pick(Bing.CHOICE), pick(DailyRandom.CHOICE), pick(ShowsWall.CHOICE),
                 Tile(getString(R.string.built_in), inUse(current in builtIns(forDark)) ?: builtIns(forDark).first(), R.drawable.ms_landscape, R.string.help_built_in) { pickBuiltIn(forDark) }),
         )
         // The current wallpaper's own settings first: how often a folder or the shows change, and which shows.
@@ -1846,15 +1853,8 @@ class MainActivity : Activity() {
                 val changed = mutableSetOf<String>()
                 var updateFailed = false
                 val catalog = try {
-                    // shortcut: GitHub's directory API supports 1,000 entries; use the tree API for a larger pack.
-                    val entries = org.json.JSONArray(openStream("https://api.github.com/repos/$REPO/contents/wallpapers?ref=main").use { it.readBytes().decodeToString() })
-                    require(entries.length() < 1000)
-                    val photos = (0 until entries.length()).mapNotNull { i ->
-                        val entry = entries.getJSONObject(i)
-                        if (entry.optString("type") != "file" || !packFileName(entry.getString("name"))) null
-                        else PackPhoto(entry.getString("name"), entry.getLong("size"), entry.getString("sha"))
-                    }
-                    require(photos.map { it.file }.distinct().size == photos.size)
+                    val photos = parsePackCatalog(openStream("https://api.github.com/repos/$REPO/contents/wallpapers?ref=main")
+                        .use { it.readBytes().decodeToString() })
                     val updates = photos.filter { File(packDir(), it.file).isFile && !it.current(packDir()) }
                     if (updates.isNotEmpty()) ui.post { if (!isDestroyed) toast(getString(R.string.downloading_wallpapers, packSize(updates))) }
                     for (photo in updates) {
@@ -2183,6 +2183,8 @@ class MainActivity : Activity() {
             .remove(photoKey()).putLong(photoAtKey(), System.currentTimeMillis()).apply()
         Bing.dropIfUnused(applicationContext, prefs) // choosing another wallpaper deletes the Bing picture at once
         if (choice == Bing.CHOICE) Bing.refresh(applicationContext, prefs, force = true)
+        DailyRandom.dropIfUnused(applicationContext, prefs)
+        if (choice == DailyRandom.CHOICE) DailyRandom.refresh(applicationContext, prefs, force = true)
         dropShowsIfUnused()
         if (choice == ShowsWall.CHOICE) {
             prefs.edit().remove("wp_show_key").putLong("wp_show_at", 0).apply()
@@ -2196,6 +2198,7 @@ class MainActivity : Activity() {
     }
 
     private val bingChanged: () -> Unit = { if (currentWallpaper() == Bing.CHOICE) loadWallpaper() }
+    private val dailyRandomChanged: () -> Unit = { if (currentWallpaper() == DailyRandom.CHOICE) loadWallpaper() }
 
     // ---------- shows wallpaper (see ShowsWall) ----------
 
@@ -3593,6 +3596,7 @@ class MainActivity : Activity() {
                 when {
                     choice.startsWith("res:") -> BUNDLED_WALLPAPERS[choice.removePrefix("res:")]?.let { BitmapFactory.decodeResource(resources, it, small) }
                     choice == Bing.CHOICE -> BitmapFactory.decodeFile(Bing.file(this@MainActivity).path, small)
+                    choice == DailyRandom.CHOICE -> BitmapFactory.decodeFile(DailyRandom.file(this@MainActivity, prefs).path, small)
                     choice == ShowsWall.CHOICE -> BitmapFactory.decodeFile(ShowsWall.file(this@MainActivity).path, small)
                     choice.startsWith("file:") -> BitmapFactory.decodeFile(File(wallpaperDir(), choice.removePrefix("file:")).path, small)
                     choice.startsWith("pack:") -> BitmapFactory.decodeFile(File(packDir(), choice.removePrefix("pack:")).path, small)

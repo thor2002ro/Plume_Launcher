@@ -302,6 +302,7 @@
     <string name="input_removed">Removed from the row.</string>
     <string name="sources_hint">Hold OK to pin an input to the row.</string>
     <string name="bing_daily">Photo of the day</string>
+    <string name="daily_random">Daily random</string>
     <!-- Remote keys: change what a button on the remote does -->
     <string name="section_clock_weather">Clock &amp; weather</string>
     <string name="section_remote_home">Home &amp; remote</string>

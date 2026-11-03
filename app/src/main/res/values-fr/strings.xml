@@ -245,6 +245,7 @@
     <string name="input_removed">Retirée de la ligne.</string>
     <string name="sources_hint">Maintenez OK pour épingler une entrée à la ligne.</string>
     <string name="bing_daily">Image Bing du jour</string>
+    <string name="daily_random">Image aléatoire du jour</string>
     <!-- Remote keys: change what a button on the remote does -->
     <string name="section_keys">Touches de la télécommande</string>
     <string name="key_add">Ajouter une touche</string>

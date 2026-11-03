@@ -1,5 +1,6 @@
 package dev.plume
 
+import org.json.JSONArray
 import java.io.File
 import java.io.DataInputStream
 import java.io.IOException
@@ -13,6 +14,20 @@ internal fun packFileName(name: String) = name.matches(Regex("[A-Za-z0-9][A-Za-z
 
 internal fun packPhotoName(file: String) = file.substringBeforeLast('.').replace(Regex("^\\d+[_-]"), "")
     .replace('_', ' ').replace('-', ' ')
+
+/** The GitHub directory response for the built-in pack. */
+internal fun parsePackCatalog(json: String): List<PackPhoto> {
+    val entries = JSONArray(json)
+    // shortcut: GitHub's directory API supports 1,000 entries; use the tree API for a larger pack.
+    require(entries.length() < 1000)
+    val photos = (0 until entries.length()).mapNotNull { i ->
+        val entry = entries.getJSONObject(i)
+        if (entry.optString("type") != "file" || !packFileName(entry.getString("name"))) null
+        else PackPhoto(entry.getString("name"), entry.getLong("size"), entry.getString("sha"))
+    }
+    require(photos.map { it.file }.distinct().size == photos.size)
+    return photos
+}
 
 internal data class PackPhoto(val file: String, val size: Long, val sha: String) {
     init {
