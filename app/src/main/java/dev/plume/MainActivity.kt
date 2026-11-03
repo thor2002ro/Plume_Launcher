@@ -5340,7 +5340,7 @@ class MainActivity : Activity() {
         if (force) renderSettings(R.string.updates)
         io.execute {
             val latest = try {
-                getJson("https://api.github.com/repos/$REPO/releases/latest").getString("tag_name").removePrefix("v")
+                getJson("https://api.github.com/repos/$UPDATE_REPO/releases/latest").getString("tag_name").removePrefix("v")
             } catch (e: Exception) {
                 android.util.Log.w("Plume", "update check failed ($e)")
                 null
@@ -5438,7 +5438,7 @@ class MainActivity : Activity() {
         io.execute {
             val ok = try {
                 apk.delete()
-                openStream("https://github.com/$REPO/releases/download/v$ver/Plume.apk").use { input ->
+                openStream("https://github.com/$UPDATE_REPO/releases/download/v$ver/Plume.apk").use { input ->
                     apk.outputStream().use { input.copyTo(it) }
                 }
                 val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
@@ -6610,6 +6610,7 @@ class MainActivity : Activity() {
         )
         const val CHOSEN = "✓"
         const val REPO = "aradhyas8/Plume_Launcher"
+        const val UPDATE_REPO = "thor2002ro/Plume_Launcher"
         const val UPDATE_STATUS = "dev.plume.UPDATE_STATUS"
         const val WRITE_EPG ="com.android.providers.tv.permission.WRITE_EPG_DATA"
         const val TV_SETTINGS = "com.android.tv.settings"
