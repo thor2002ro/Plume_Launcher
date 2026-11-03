@@ -1721,6 +1721,7 @@ class MainActivity : Activity() {
             return BitmapFactory.decodeResource(resources, res)
         }
         return when {
+            choice.startsWith("plain:") -> null
             choice == Bing.CHOICE -> fitWallpaper { Bing.file(this).inputStream() }
             choice == DailyRandom.CHOICE -> fitWallpaper { DailyRandom.file(this, prefs).inputStream() }
             choice == ShowsWall.CHOICE -> fitWallpaper { ShowsWall.file(this).inputStream() }
@@ -2200,7 +2201,7 @@ class MainActivity : Activity() {
             wallpaperDir()?.let { cleanUnusedVideoWallpapers(it) }
         }
         updateFeatured()
-        loadWallpaper()
+        if (choice != DailyRandom.CHOICE) loadWallpaper()
     }
 
     private val bingChanged: () -> Unit = { if (currentWallpaper() == Bing.CHOICE) loadWallpaper() }

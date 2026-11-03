@@ -76,14 +76,14 @@ internal object DailyRandom {
                 val catalog = parsePackCatalog(connect(CATALOG).inputStream.use { it.readBytes().decodeToString() })
                 val previous = prefs.getString(FILE, null)
                 val photo = chooseDailyPhoto(catalog, previous) ?: throw IOException("empty wallpaper catalogue")
-                val changed = installDailyPhoto(dir(c), photo) {
+                installDailyPhoto(dir(c), photo) {
                     connect(RAW + photo.file + "?v=" + photo.sha).inputStream
                 }
                 synchronized(lock) {
                     if (!used(prefs)) clear(c, prefs)
                     else {
                         prefs.edit().putLong(DAY, today).putString(FILE, photo.file).apply()
-                        if (changed || photo.file != previous) main.post { onChanged?.invoke() }
+                        main.post { onChanged?.invoke() }
                     }
                 }
             } catch (e: Exception) {
