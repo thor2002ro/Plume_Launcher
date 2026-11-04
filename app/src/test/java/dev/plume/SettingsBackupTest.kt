@@ -8,14 +8,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsBackupTest {
+    @Test fun directBackupUsesAndroidCopyNames() {
+        assertEquals("plume-settings.txt", SettingsBackup.nextBackupFileName(emptySet()))
+        assertEquals("plume-settings (2).txt", SettingsBackup.nextBackupFileName(setOf("plume-settings.txt", "plume-settings (1).txt")))
+    }
+
     @Test fun fakeTvDocumentPickerUsesWorkingFallbacks() {
         val stub = "com.android.tv.frameworkpackagestubs.Stubs\$DocumentsStub"
+        val googleStub = "com.google.android.tv.frameworkpackagestubs.Stubs\$DocumentsStub"
 
         assertEquals(SettingsFileRoute.DOWNLOAD, settingsFileRoute(true, listOf(stub), emptyList(), emptyList()))
+        assertEquals(SettingsFileRoute.DOWNLOAD, settingsFileRoute(true, listOf(googleStub), emptyList(), emptyList()))
         assertEquals(SettingsFileRoute.GET, settingsFileRoute(false, emptyList(), listOf(stub), listOf("nextapp.fx.ui.filechooser.ChooserActivity")))
+        assertEquals(SettingsFileRoute.DOWNLOAD, settingsFileRoute(false, emptyList(), listOf(googleStub), listOf(googleStub)))
         assertEquals(SettingsFileRoute.CREATE, settingsFileRoute(true, listOf("com.android.documentsui.PickActivity"), emptyList(), emptyList()))
         assertEquals(SettingsFileRoute.OPEN, settingsFileRoute(false, emptyList(), listOf("com.android.documentsui.PickActivity"), emptyList()))
-        assertEquals(SettingsFileRoute.NONE, settingsFileRoute(false, emptyList(), listOf(stub), emptyList()))
+        assertEquals(SettingsFileRoute.DOWNLOAD, settingsFileRoute(false, emptyList(), listOf(stub), emptyList()))
     }
 
     @Test fun everyPreferenceTypeRoundTripsDeterministically() {

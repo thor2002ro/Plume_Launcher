@@ -2,7 +2,7 @@ package dev.plume
 
 import java.io.Reader
 
-internal enum class SettingsFileRoute { CREATE, OPEN, GET, DOWNLOAD, NONE }
+internal enum class SettingsFileRoute { CREATE, OPEN, GET, DOWNLOAD }
 
 internal fun settingsFileRoute(
     backup: Boolean,
@@ -10,13 +10,13 @@ internal fun settingsFileRoute(
     openHandlers: Collection<String>,
     getHandlers: Collection<String>,
 ): SettingsFileRoute {
-    fun Collection<String>.usable() = any { it != "com.android.tv.frameworkpackagestubs.Stubs\$DocumentsStub" }
+    fun Collection<String>.usable() = any { !it.endsWith(".Stubs\$DocumentsStub") }
     return if (backup) {
         if (createHandlers.usable()) SettingsFileRoute.CREATE else SettingsFileRoute.DOWNLOAD
     } else when {
         openHandlers.usable() -> SettingsFileRoute.OPEN
         getHandlers.usable() -> SettingsFileRoute.GET
-        else -> SettingsFileRoute.NONE
+        else -> SettingsFileRoute.DOWNLOAD
     }
 }
 
@@ -24,6 +24,15 @@ internal object SettingsBackup {
     enum class RestoreResult { RESTORED, FAILED, ROLLBACK_FAILED }
 
     private const val HEADER = "Plume settings\t1"
+
+    fun nextBackupFileName(existing: Set<String>): String {
+        var copy = 0
+        while (true) {
+            val name = if (copy == 0) "plume-settings.txt" else "plume-settings ($copy).txt"
+            if (name !in existing) return name
+            copy++
+        }
+    }
 
     private val deviceLocal = setOf("futurity_set", "futurity_was", "prev_screensaver", "inputs_moved")
     private val disposable = setOf(

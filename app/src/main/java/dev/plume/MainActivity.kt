@@ -631,6 +631,11 @@ class MainActivity : Activity() {
             if (results.firstOrNull() == PackageManager.PERMISSION_GRANTED) refreshRemoteBattery(force = true) else updateBatteryIcon()
             return
         }
+        if (code == SETTINGS_STORAGE_REQUEST) {
+            if (results.firstOrNull() == PackageManager.PERMISSION_GRANTED) writeSettingsBackup(null)
+            else toast(getString(R.string.settings_file_failed), long = true)
+            return
+        }
         if (code != MEDIA_REQUEST) return refreshWatchNext()
         if (results.firstOrNull() == PackageManager.PERMISSION_GRANTED) afterPhotoAccess?.invoke()
         else toast(getString(R.string.photos_permission), long = true)
@@ -2742,12 +2747,7 @@ class MainActivity : Activity() {
             if (backup) emptyList() else settingsDocumentHandlers(Intent.ACTION_GET_CONTENT),
         )
         if (route == SettingsFileRoute.DOWNLOAD) {
-            if (Build.VERSION.SDK_INT >= 29) writeSettingsBackup(null)
-            else toast(getString(R.string.settings_file_failed), long = true)
-            return
-        }
-        if (route == SettingsFileRoute.NONE) {
-            toast(getString(R.string.settings_file_failed), long = true)
+            settingsFileFallback(request)
             return
         }
         val action = when (route) {
@@ -2759,14 +2759,22 @@ class MainActivity : Activity() {
         try {
             startActivityForResult(settingsDocumentIntent(action), request)
         } catch (_: ActivityNotFoundException) {
-            toast(getString(R.string.settings_file_failed), long = true)
+            settingsFileFallback(request)
         }
+    }
+
+    private fun settingsFileFallback(request: Int) {
+        if (request == SETTINGS_RESTORE) return readLatestSettingsBackup()
+        if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(WRITE_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(WRITE_STORAGE), SETTINGS_STORAGE_REQUEST)
+        } else writeSettingsBackup(null)
     }
 
     private fun writeSettingsBackup(uri: Uri?) {
         val values = prefs.all
         io.execute {
             var created: Uri? = null
+            var direct: File? = null
             val saved = runCatching {
                 val inserted = if (uri == null && Build.VERSION.SDK_INT >= 29) contentResolver.insert(
                     MediaStore.Downloads.EXTERNAL_CONTENT_URI,
@@ -2778,9 +2786,15 @@ class MainActivity : Activity() {
                     },
                 ) else null
                 created = inserted
-                val destination = uri ?: inserted ?: throw IOException("Could not create settings backup")
+                direct = if (uri == null && Build.VERSION.SDK_INT < 29) {
+                    val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    File(downloads, SettingsBackup.nextBackupFileName(downloads.list()?.toSet().orEmpty()))
+                } else null
+                val destination = uri ?: inserted ?: direct?.let(Uri::fromFile)
+                    ?: throw IOException("Could not create settings backup")
                 val text = SettingsBackup.encode(values)
-                val stream = contentResolver.openOutputStream(destination, "wt") ?: throw IOException("No output stream")
+                val stream = direct?.outputStream() ?: contentResolver.openOutputStream(destination, "wt")
+                    ?: throw IOException("No output stream")
                 stream.bufferedWriter(Charsets.UTF_8).use { it.write(text) }
                 if (created != null) require(contentResolver.update(
                     destination,
@@ -2790,9 +2804,10 @@ class MainActivity : Activity() {
                 ) == 1) { "Could not publish settings backup" }
             }.isSuccess
             if (!saved) created?.let { contentResolver.delete(it, null, null) }
+            if (!saved) direct?.delete()
             ui.post { if (!isDestroyed) toast(getString(when {
                 !saved -> R.string.settings_file_failed
-                created != null -> R.string.settings_backup_saved_downloads
+                created != null || direct != null -> R.string.settings_backup_saved_downloads
                 else -> R.string.settings_backup_saved
             }), long = !saved) }
         }
@@ -2807,6 +2822,33 @@ class MainActivity : Activity() {
             ui.post {
                 if (isDestroyed) return@post
                 restored.fold(::confirmSettingsRestore) { toast(getString(R.string.settings_file_failed), long = true) }
+            }
+        }
+    }
+
+    private fun readLatestSettingsBackup() {
+        io.execute {
+            val latest = runCatching {
+                if (Build.VERSION.SDK_INT < 29) {
+                    val prefix = SETTINGS_FILE.removeSuffix(".txt")
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).listFiles()
+                        ?.filter { it.isFile && it.name.startsWith(prefix) && it.name.endsWith(".txt") }
+                        ?.maxWithOrNull(compareBy({ it.lastModified() }, { it.name.length }, { it.name }))
+                        ?.let(Uri::fromFile)
+                } else {
+                    val downloads = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                    contentResolver.query(
+                        downloads,
+                        arrayOf(MediaStore.MediaColumns._ID),
+                        "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+                        arrayOf("${SETTINGS_FILE.removeSuffix(".txt")}%.txt", "${Environment.DIRECTORY_DOWNLOADS}/%"),
+                        "${MediaStore.MediaColumns.DATE_MODIFIED} DESC, ${MediaStore.MediaColumns._ID} DESC",
+                    )?.use { if (it.moveToFirst()) ContentUris.withAppendedId(downloads, it.getLong(0)) else null }
+                }
+            }.getOrNull()
+            ui.post {
+                if (!isDestroyed) latest?.let(::readSettingsBackup)
+                    ?: toast(getString(R.string.settings_file_failed), long = true)
             }
         }
     }
@@ -6497,6 +6539,7 @@ class MainActivity : Activity() {
         const val INSTALL_REQUEST = 4
         const val SETTINGS_BACKUP = 5
         const val SETTINGS_RESTORE = 6
+        const val SETTINGS_STORAGE_REQUEST = 7
         const val SETTINGS_FILE = "plume-settings.txt"
         val ROW_ALIGN = linkedMapOf( // setting -> its name, and the row's gravity in the scroller
             "left" to (R.string.align_left to Gravity.START),
@@ -6604,6 +6647,7 @@ class MainActivity : Activity() {
         const val FADING = "fading" // the tag of a card that is fading out
         const val CARDS_AHEAD = 8 // Continue Watching cards built past the focused one (see addCardsTo)
         val READ_PHOTOS = if (Build.VERSION.SDK_INT >= 33) "android.permission.READ_MEDIA_IMAGES" else "android.permission.READ_EXTERNAL_STORAGE"
+        const val WRITE_STORAGE = "android.permission.WRITE_EXTERNAL_STORAGE"
         /** Minutes between folder photos. */
         val PHOTO_EVERY = linkedMapOf(
             1 to R.string.every_1, 5 to R.string.every_5, 10 to R.string.every_10, 15 to R.string.every_15, 30 to R.string.every_30,
@@ -6634,7 +6678,7 @@ class MainActivity : Activity() {
         /** By pack photo name: a 1080p copy ships in the app, and the 4K pack photo of that name replaces it once downloaded. */
         val BUNDLED_WALLPAPERS = mapOf("Arctic Aurora" to R.drawable.wallpaper_aurora)
         const val FIRST_WALLPAPER = "res:Arctic Aurora"
-        // ponytail: pinned to today's blob; if the photo changes on main the fetch fails and the 1080p copy stays.
+        // Pinned to today's blob; if the photo changes on main the fetch fails and the 1080p copy stays.
         val FIRST_WALLPAPER_4K = PackPhoto("05_Arctic_Aurora.webp", 1_145_394, "fb288f54f21328355cf2d2c0cb23148069888628")
         const val PACK_URL = "https://raw.githubusercontent.com/aradhyas8/Plume_Launcher/main/wallpapers/"
         val PIN_KEYS = setOf(
